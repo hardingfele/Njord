@@ -1,7 +1,7 @@
 # Njord Weather – web app
 
 The web version of Njord Weather, published with GitHub Pages at
-https://hardingfele.github.io/njord/
+https://hardingfele.github.io/Njord/
 
 **iPhone:** open the link in Safari › Share › **Add to Home Screen**.
 **Android:** open in Chrome › menu › **Add to Home screen** / **Install app**.
