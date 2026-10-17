@@ -254,3 +254,14 @@ html:not(.phone) #phMini { display: none; }
 .fxHol span { font-weight: 400; opacity: .8; }
 .fxHols { margin-bottom: 2px; }
 .chip .hereName { font-weight: 400; opacity: .75; }
+
+/* ---- build 20: precipitation amounts and the 24-hour summary --------------- */
+.sum24 { font-size: 14px; line-height: 1.4; color: rgba(232,238,248,.92); margin: -2px 0 12px;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.sum24:empty { display: none; }
+.hr .p { height: 14px; line-height: 14px; }
+.hr .a { font-size: 11px; height: 14px; line-height: 14px; white-space: nowrap; font-weight: 500; }
+.hr .a .rn { color: rgba(170,196,224,.82); }
+.hr .a .sn { color: #eef4ff; }
+.hr .a .ice { color: #f2b86d; font-weight: 600; }
+.hr .a .fl { vertical-align: -1px; margin-right: 2px; }

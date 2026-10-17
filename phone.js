@@ -44,7 +44,7 @@ const ph = document.createElement("div"); ph.id = "ph";
 ph.innerHTML =
   '<div id="phTop"><div id="phHero"></div></div>' +
   '<div id="phSheet"><div class="grab"></div><div id="phAur"></div>' +
-    '<section class="pc" id="phHourly"><h3>Next 24 hours <a class="jump" id="phJump">10-day &rsaquo;</a></h3><div class="hrs"></div></section>' +
+    '<section class="pc" id="phHourly"><h3>Next 24 hours <a class="jump" id="phJump">10-day &rsaquo;</a></h3><div class="sum24"></div><div class="hrs"></div></section>' +
     '<div class="grid2" id="phDetails"></div>' +
     '<section class="pc" id="phSky" style="margin-top:12px"></section>' +
     '<section class="pc" id="phDays"><h3>10-day forecast <span class="tapHint">tap a day</span></h3><div class="days"></div></section>' +
@@ -125,6 +125,7 @@ function render(force){
   renderPlaces();
   if(!WX){
     $("phHourly").querySelector(".hrs").innerHTML = '<div class="sub" style="padding:8px 16px">Loading forecast…</div>';
+    $("phHourly").querySelector(".sum24").innerHTML = "";
     $("phDays").querySelector(".days").innerHTML = "";
     $("phDetails").innerHTML = ""; $("phSky").innerHTML = "";
     return;
@@ -229,30 +230,182 @@ function nightAt(min){
   const r = ev.rise != null ? ev.rise : 360, st = ev.set != null ? ev.set : 1140;
   return min < r || min > st;
 }
+/* ---- amounts under each hour -----------------------------------------------
+   Rain hours show the rain, snow hours the snow depth, and hours with both
+   (wet snow near freezing) show the rain with the snow under it. Freezing
+   rain is marked "ice", since its water freezes on whatever it hits. */
+const ICE_CODES = { 56:1, 57:1, 66:1, 67:1 };
+const metricAmt = () => CONFIG.units !== "imperial";
+const LIQ_MIN = () => metricAmt() ? 0.1 : 0.01;      // mm / in
+const SNOW_MIN = () => metricAmt() ? 0.1 : 0.1;      // cm / in
+function amounts(h){
+  const ice = !!ICE_CODES[h.code];
+  const liq = h.rain != null ? h.rain : null, snow = h.snow != null ? h.snow : 0;
+  const hasLiq = liq != null && liq >= LIQ_MIN(), hasSnow = snow >= SNOW_MIN();
+  return { ice, liq: hasLiq ? liq : 0, snow: hasSnow ? snow : 0, mixed: hasLiq && hasSnow };
+}
+function fmtLiq(v){
+  if(metricAmt()) return (v < 10 ? v.toFixed(1) : Math.round(v)) + " mm";
+  return v.toFixed(2).replace(/^0/, "") + "″";
+}
+function fmtSnow(v){
+  if(metricAmt()) return (v < 10 ? v.toFixed(1) : Math.round(v)) + " cm";
+  return v.toFixed(1) + "″";
+}
+const FLAKE = '<svg class="fl" viewBox="0 0 10 10" width="9" height="9" aria-hidden="true"><path d="M5 .5v9M1.1 2.75l7.8 4.5M1.1 7.25l7.8-4.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>';
+function amtLines(h){
+  const a = amounts(h);
+  const liq = a.liq ? '<span class="' + (a.ice ? "ice" : "rn") + '">' + fmtLiq(a.liq) + (a.ice ? " ice" : "") + "</span>" : "";
+  const snow = a.snow ? '<span class="sn">' + FLAKE + fmtSnow(a.snow) + "</span>" : "";
+  return a.mixed ? [liq, snow] : [liq || snow, ""];
+}
+
 function renderHours(){
   const hs = WX.hours || [];
   const p = zonedParts(new Date(), PLACE.tz);
   const key = p.year + "-" + pad(p.month) + "-" + pad(p.day) + "T" + pad(p.hour);
   let i0 = hs.findIndex(h => String(h.time).slice(0, 13) === key);
   if(i0 < 0) i0 = 0;
+  const win = hs.slice(i0, i0 + 25);
+  /* the second amount line is there for every hour or none, so the strip
+     never changes height as you scroll it */
+  const two = win.some(h => amounts(h).mixed);
   const out = [];
   const ev = SUNEV || {};
+  const blank = '<div class="a"></div>' + (two ? '<div class="a"></div>' : "");
   for(let i = i0; i < Math.min(hs.length, i0 + 25); i++){
     const h = hs[i], hr = +String(h.time).slice(11, 13);
     const now = i === i0;
     const pop = h.pop != null && h.pop >= 20 ? Math.round(h.pop/10)*10 + "%" : "";
+    const [l1, l2] = amtLines(h);
     out.push('<div class="hr' + (now ? " now" : "") + '"><div class="t">' + (now ? "Now" : esc(shortTime(hr*60))) +
              '</div><img alt="" src="' + icon(h.code, nightAt(hr*60 + 30)) + '"><div class="v">' + h.temp + deg + '</div>' +
-             '<div class="p">' + pop + '</div></div>');
+             '<div class="p">' + pop + '</div><div class="a">' + l1 + '</div>' + (two ? '<div class="a">' + l2 + '</div>' : "") + '</div>');
     for(const [t, label] of [[ev.rise, "Sunrise"], [ev.set, "Sunset"]]){
       if(t == null || i === i0 + 24) continue;
       if(t >= hr*60 && t < (hr + 1)*60 && (!now || t > p.hour*60 + p.minute)){
         out.push('<div class="hr sun"><div class="t">' + esc(shortTime(t)) + '</div><img alt="" src="' +
-                 icon(0, false) + '"><div class="v" style="font-size:12.5px">' + label + '</div><div class="p"></div></div>');
+                 icon(0, false) + '"><div class="v" style="font-size:12.5px">' + label + '</div><div class="p"></div>' + blank + '</div>');
       }
     }
   }
   $("phHourly").querySelector(".hrs").innerHTML = out.join("");
+  let txt = "";
+  try { txt = summary24(win); } catch(e){ txt = ""; }
+  $("phHourly").querySelector(".sum24").innerHTML = txt;
+}
+
+/* ---- one or two sentences over the hourly strip ----------------------------
+   What falls, when, how it changes, and how much, for the next 24 hours. */
+function kindOf(h){
+  const w = wmo(h.code), a = amounts(h);
+  if(a.ice || w.precip === "sleet") return "ice";
+  if(a.mixed) return "mix";
+  if(a.snow) return "snow";
+  if(a.liq) return w.precip === "snow" ? "mix" : "rain";
+  if(w.precip === "snow") return "snow";
+  return "rain";
+}
+function rainWord(list){
+  if(list.some(h => wmo(h.code).thunder)) return "showers and thunderstorms";
+  if(list.every(h => wmo(h.code).precip === "drizzle")) return "drizzle";
+  if(list.filter(h => h.code >= 80 && h.code <= 82).length > list.length/2) return "showers";
+  return "rain";
+}
+function kindWord(k, list){
+  if(k === "ice") return list.some(h => h.code === 66 || h.code === 67) ? "freezing rain" : "freezing drizzle";
+  if(k === "snow") return list.some(h => h.code === 85 || h.code === 86) ? "snow showers" : "snow";
+  if(k === "mix") return "a rain and snow mix";
+  return rainWord(list);
+}
+function sumWet(h){
+  const w = wmo(h.code), a = amounts(h);
+  if(w.precip === "fog") return false;
+  if(h.pop != null && h.pop < 30) return false;
+  return !!w.precip || a.liq > 0 || a.snow > 0;
+}
+function snowRange(t){
+  const u = metricAmt() ? " cm" : "″";
+  if(metricAmt()){
+    if(t < 1) return "less than a centimetre of snow";
+    if(t < 3) return "1–3 cm of snow";
+    const lo = Math.floor(t/2)*2; return lo + "–" + (lo + 3) + u + " of snow";
+  }
+  if(t < 0.5) return "a dusting of snow";
+  if(t < 1) return "under an inch of snow";
+  const lo = Math.floor(t); return lo + "–" + (lo + 1) + u + " of snow";
+}
+function liqWords(t, what){
+  if(metricAmt()){
+    if(t < 1) return "under 1 mm of " + what;
+    return "about " + Math.round(t) + " mm of " + what;
+  }
+  if(t < 0.05) return "under a twentieth of an inch of " + what;
+  if(t < 0.1) return "under a tenth of an inch of " + what;
+  return "about " + (Math.round(t*20)/20).toFixed(2).replace(/0$/, "") + "″ of " + what;
+}
+function summary24(win){
+  if(!win.length) return "";
+  const hrOf = h => +String(h.time).slice(11, 13);
+  const at = h => shortTime(hrOf(h)*60).replace(" ", "\u00a0");   // keep "11 AM" on one line
+  const wet = win.filter(sumWet);
+  const maxPop = Math.max(0, ...win.map(h => h.pop || 0));
+  if(!wet.length){
+    if(maxPop >= 20){
+      const top = win.reduce((a, h) => (h.pop || 0) > (a.pop || 0) ? h : a, win[0]);
+      const k = wmo(top.code).precip === "snow" ? "snow" : "showers";
+      return "Mostly dry, with a slight chance of " + k + " around " + at(top) + ".";
+    }
+    return "No precipitation expected in the next 24 hours.";
+  }
+  /* split the wet hours into runs of one kind; a mixed hour between rain and
+     snow is the changeover, not its own run */
+  const runs = [];
+  for(const h of wet){
+    const k = kindOf(h), last = runs[runs.length - 1];
+    if(last && last.k === k) last.hrs.push(h);
+    else runs.push({ k, hrs: [h] });
+  }
+  const main = runs.filter(r => r.k !== "mix" || runs.length === 1);
+  const first = wet[0], last = wet[wet.length - 1];
+  const startsNow = first === win[0] || first === win[1];
+  const runsOut = last === win[win.length - 1] || last === win[win.length - 2];
+  const c = maxPop >= 70 || maxPop === 0 ? " likely" : maxPop >= 40 ? " possible" : null;
+  const span = startsNow ? (runsOut ? " through the next 24 hours" : " until about " + at(last))
+                         : (runsOut ? " from about " + at(first) + " on" : " from about " + at(first) + " to " + at(last));
+  let s;
+  const kinds = [];
+  for(const r of main) if(!kinds.length || kinds[kinds.length - 1].k !== r.k) kinds.push(r);
+  if(kinds.length >= 2){
+    const a = kinds[0], b = kinds[1];
+    const turn = runs.find(r => r.k === "mix") ? runs.find(r => r.k === "mix").hrs[0] : b.hrs[0];
+    s = cap(kindWord(a.k, a.hrs)) + (startsNow ? " now" : " from about " + at(first)) +
+        ", changing to " + kindWord(b.k, b.hrs) + " around " + at(turn) + ".";
+  } else {
+    const k = kinds[0];
+    s = c ? cap(kindWord(k.k, k.hrs)) + c + span + "."
+          : "A chance of " + kindWord(k.k, k.hrs) + span + ".";
+  }
+  /* totals */
+  let rainT = 0, iceT = 0, snowT = 0, have = false;
+  for(const h of win){
+    if(h.rain == null && h.snow == null) continue;
+    have = true;
+    const a = amounts(h);
+    if(a.ice) iceT += a.liq; else rainT += a.liq;
+    snowT += a.snow;
+  }
+  if(have){
+    const bits = [];
+    if(rainT >= LIQ_MIN()) bits.push(liqWords(rainT, "rain"));
+    if(iceT >= LIQ_MIN()) bits.push(liqWords(iceT, "ice").replace(/^about /, "up to "));
+    if(snowT >= SNOW_MIN()) bits.push(snowRange(snowT));
+    if(bits.length){
+      let t = bits.length === 1 ? bits[0] : bits.slice(0, -1).join(", ") + (bits.length === 2 ? ", then " : ", and ") + bits[bits.length - 1];
+      s += " " + cap(t) + ".";
+    }
+  }
+  return s;
 }
 
 /* ---- the written forecast for one day ---------------------------------------- */
