@@ -340,16 +340,20 @@ function dayText(i){
     s += " Chance of precipitation " + Math.round(d.pop) + "%.";
     s += amountWords(d, wmo(d.code).precip);
   }
-  /* tonight, for today only */
+  /* tonight, for today only. Once the day is over (6 pm, or after sunset
+     from 3 pm) the daytime text is dropped and only tonight is shown. */
   if(i === 0 && days[1]){
     const p = zonedParts(new Date(), PLACE.tz);
+    const sunDown = SCENE && SCENE.sun && SCENE.sun.alt < -0.833;
+    const evening = p.hour >= 18 || (p.hour >= 15 && sunDown);
     const night = all.filter(h => h.hr >= Math.max(18, p.hour)).concat(hoursOn(days[1].date).filter(h => h.hr <= 7));
     if(night.length >= 4){
       const nWet = night.filter(wetHour), lo = Math.min(...night.map(h => h.temp));
       const maxPop = Math.max(0, ...night.map(h => h.pop || 0));
       let t = nWet.length ? cap(precipWords(nWet[0].code)) + (maxPop >= 70 ? " likely" : maxPop >= 40 ? " possible" : " in spots")
                           : cap(skyWord(night, true));
-      s += "<br><br><b>Tonight:</b> " + t + ", low around " + lo + deg + ".";
+      const tn = "<b>Tonight:</b> " + t + ", low around " + lo + deg + ".";
+      s = evening ? tn : s + "<br><br>" + tn;
     }
   }
   return s;
