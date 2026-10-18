@@ -1,0 +1,267 @@
+/* Njord Weather - phone layer.
+   In portrait on a phone the animated scene fills the screen behind, and the
+   forecast lives on a sheet of cards that scrolls up over the ground. In
+   landscape the original wide layout comes back untouched. */
+#ph, #phBar { display: none; }
+html.phone #ph { display: block; }
+html.phone #phBar { display: flex; }
+html.phone #kbBtn, html.phone #kb, html.phone #hint { display: none !important; }
+html.phone #q { padding-right: 46px; }
+html.app #testRow, html.app #set h4.adv { display: none; }
+
+#ph {
+  position: fixed; inset: 0; z-index: 4;
+  overflow-y: auto; overflow-x: hidden;
+  overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+#ph::-webkit-scrollbar { display: none; }
+#phTop { height: 78vh; height: 78svh; }
+#phSheet {
+  padding: 4px 12px calc(28px + env(safe-area-inset-bottom));
+  font: 400 14px/1.4 Figtree, "Segoe UI", system-ui, sans-serif; color: #e8eef8;
+}
+#phSheet .grab { width: 38px; height: 4px; border-radius: 2px; margin: 0 auto 10px;
+  background: rgba(220,230,245,.38); }
+.pc {
+  background: rgba(11,15,24,.74); border: 1px solid rgba(160,190,235,.12);
+  border-radius: 18px; padding: 14px 16px; margin-bottom: 12px;
+  -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+}
+.pc h3 { margin: 0 0 10px; font: 600 11px/1 Figtree, system-ui, sans-serif;
+  letter-spacing: .14em; text-transform: uppercase; color: rgba(170,190,220,.72); }
+
+/* hourly strip */
+.hrs { display: flex; gap: 4px; overflow-x: auto; margin: 0 -16px; padding: 0 12px 2px;
+  scrollbar-width: none; }
+.hrs::-webkit-scrollbar { display: none; }
+.hr { flex: 0 0 54px; text-align: center; padding: 6px 0; border-radius: 12px; }
+.hr.now { background: rgba(120,224,242,.12); }
+.hr .t { font-size: 12px; color: rgba(200,214,236,.72); white-space: nowrap; }
+.hr.now .t { color: #fff; font-weight: 600; }
+.hr img { width: 34px; height: 34px; display: block; margin: 4px auto; }
+.hr .v { font-size: 16px; font-weight: 500; }
+.hr .p { font-size: 11px; color: #90c3f2; min-height: 14px; font-weight: 600; }
+.hr.sun .t { color: #f2c46d; }
+
+/* day list */
+.dy { display: grid; grid-template-columns: 86px 30px 38px 34px 1fr 34px; align-items: center;
+  gap: 4px; padding: 7px 0; border-top: 1px solid rgba(160,190,235,.07); }
+.dy:first-child { border-top: none; }
+.dy .n { font-weight: 500; color: rgba(226,234,246,.88); }
+.dy:first-child .n { font-weight: 600; color: #fff; }
+.dy img { width: 28px; height: 28px; }
+.dy .p { font-size: 12px; font-weight: 600; color: #90c3f2; text-align: right; }
+.dy .lo { text-align: right; color: rgba(200,212,230,.7); }
+.dy .hi { text-align: left; font-weight: 500; }
+.bar { position: relative; height: 5px; border-radius: 3px; background: rgba(255,255,255,.08); margin: 0 4px; }
+.bar i { position: absolute; top: 0; bottom: 0; border-radius: 3px; }
+.bar b { position: absolute; top: 50%; width: 9px; height: 9px; margin: -4.5px 0 0 -4.5px; border-radius: 50%;
+  background: #fbfcfe; box-shadow: 0 0 0 2px #0b0f16; }
+
+/* details grid */
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.grid2 .pc { margin: 0; min-height: 96px; }
+.big { font-size: 26px; font-weight: 500; color: #fff; line-height: 1.15; }
+.sub { font-size: 12.5px; color: rgba(200,214,236,.68); margin-top: 4px; }
+.dirArrow { display: inline-block; font-size: 18px; color: rgba(220,230,245,.8); margin-left: 4px; }
+
+/* places */
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border-radius: 18px;
+  background: rgba(255,255,255,.06); border: 1px solid rgba(160,190,235,.16); color: #dfe8f6; font-size: 13.5px; }
+.chip.on { background: rgba(120,224,242,.16); border-color: rgba(120,224,242,.45); color: #fff; }
+.chip .x { opacity: .55; font-size: 15px; line-height: 1; padding-left: 2px; }
+.pbtn { margin-top: 10px; width: 100%; padding: 10px; border-radius: 12px; border: 1px solid rgba(160,190,235,.18);
+  background: rgba(255,255,255,.05); color: #e8eef8; font: 500 13.5px Figtree, system-ui, sans-serif; }
+.pbtn + .pbtn { margin-top: 8px; }
+.hintTxt { font-size: 12px; color: rgba(190,204,226,.55); margin-top: 8px; }
+
+/* top buttons */
+#phBar { position: fixed; top: 10px; right: 10px; z-index: 11; gap: 8px; }
+#phBar button { width: 40px; height: 40px; border-radius: 50%; border: none; padding: 0;
+  background: rgba(10,14,22,.45); color: rgba(235,242,252,.9); font-size: 18px; line-height: 40px;
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+html.phone #ui { width: calc(100vw - 24px); max-width: 420px; }
+html.phone #ui.on ~ #phBar { display: none; }
+
+/* header over the sky */
+#phTop { position: relative; }
+#phHero { position: absolute; left: 20px; right: 110px; top: 18px; color: #fff; pointer-events: none;
+  text-shadow: 0 1px 3px rgba(0,0,0,.45), 0 0 18px rgba(0,0,0,.25); }
+#phHero .hp { display: flex; align-items: baseline; gap: 8px; font: 600 18px/1.2 Figtree, system-ui, sans-serif; }
+#phHero .hn { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+#phHero .hti { flex: 0 0 auto; font-weight: 400; opacity: .75; font-size: 15px; }
+#phHero .ht { font: 300 92px/1 Fraunces, Georgia, serif; margin: 10px 0 2px -4px; letter-spacing: -2px; }
+#phHero .hc { font: 500 21px/1.2 Figtree, system-ui, sans-serif; }
+#phHero .hs { font: 400 15px/1.3 Figtree, system-ui, sans-serif; opacity: .82; margin-top: 4px; }
+
+/* desktop-only panels have no effect on the phone layout */
+html.phone #set [data-show="showHourly"], html.phone #set [data-show="showCards"],
+html.phone #set [data-show="showMoon"], html.phone #set [data-show="showSunArc"] { display: none; }
+
+/* build 2 */
+#phHero { right: 20px; }
+#phHero .hp { margin-right: 100px; }
+.hrow { display: flex; align-items: center; gap: 18px; }
+.hw { display: flex; flex-direction: column; align-items: flex-start; padding-top: 8px; }
+.hw .wArr { margin-bottom: 2px; }
+.hwv { font: 500 20px/1.15 Figtree, system-ui, sans-serif; }
+.hwv small { font-size: 13px; font-weight: 400; opacity: .8; }
+.hwd { font: 400 13px/1.3 Figtree, system-ui, sans-serif; opacity: .8; }
+.wArr { display: inline-block; line-height: 1; color: rgba(235,242,252,.9); margin-left: 4px; }
+.tapHint { float: right; letter-spacing: .02em; text-transform: none; font-weight: 400; color: rgba(170,190,220,.45); }
+.dwrap { border-top: 1px solid rgba(160,190,235,.07); }
+.dwrap:first-child { border-top: none; }
+.dwrap .dy { border-top: none; }
+.dwrap .fx { display: none; padding: 2px 2px 12px; font-size: 13.5px; line-height: 1.5; color: rgba(214,224,238,.86); }
+.dwrap.open .fx { display: block; }
+.dwrap.open .dy .n { color: #78e0f2; }
+.sky2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.big2 { font-size: 17px; font-weight: 600; color: #fff; }
+.kv { display: flex; justify-content: space-between; gap: 8px; padding: 3px 0; font-size: 13.5px; color: rgba(200,214,236,.72); }
+.kv b { font-weight: 500; color: #eef3fb; }
+.mrow { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.moonImg { width: 40px; height: 40px; flex: 0 0 40px; }
+#phBar { transition: opacity .25s ease; }
+#phBar.dim { opacity: 0; pointer-events: none; }
+
+/* ---- build 3 ------------------------------------------------------------ */
+/* header: clock, then place, then the reading */
+#phHero { left: 22px; right: 22px; top: 16px;
+  text-shadow: 0 1px 2px rgba(0,0,0,.35), 0 0 14px rgba(0,0,0,.18); }
+#phHero .hti { font: 500 14px/1.2 Figtree, system-ui, sans-serif; letter-spacing: .03em; opacity: .72; margin: 4px 96px 0 0; }
+#phHero .hn { font: 600 26px/1.2 Figtree, system-ui, sans-serif; margin: 2px 96px 0 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#phHero .ht { font: 300 100px/0.95 Fraunces, Georgia, serif; margin: 14px 0 6px -5px; letter-spacing: -3px; }
+#phHero .hc { font: 500 22px/1.25 Figtree, system-ui, sans-serif; }
+#phHero .hs { font: 400 15.5px/1.35 Figtree, system-ui, sans-serif; opacity: .86; margin-top: 3px; }
+#phHero .hwl { margin-top: 2px; }
+#phHero .wArr { font-size: 15px; margin: 0 2px 0 0; vertical-align: 0; }
+.dotsep { display: inline-block; width: 4px; height: 4px; border-radius: 50%; background: currentColor;
+  opacity: .6; margin: 0 9px; vertical-align: middle; }
+
+/* plain icons, no discs */
+#phBar { top: 14px; right: 12px; gap: 4px; }
+#phBar button { width: 44px; height: 44px; background: none; -webkit-backdrop-filter: none; backdrop-filter: none;
+  color: rgba(236,241,248,.92); display: flex; align-items: center; justify-content: center;
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,.45)); }
+#phBar button:active { color: #78e0f2; }
+
+/* sun & moon, stacked */
+.skyHead { display: flex; justify-content: space-between; align-items: baseline; }
+.skyHead h3 { margin: 0 0 8px; }
+.skyHead span { font-size: 12.5px; color: rgba(200,214,236,.66); }
+.skySep { height: 1px; background: rgba(160,190,235,.10); margin: 16px -16px 14px; }
+.arc { display: block; width: 100%; height: auto; margin: 4px 0 6px; overflow: visible; }
+.trio { display: grid; grid-template-columns: 1fr 1fr 1fr; text-align: center; }
+.trio div:first-child { text-align: left; } .trio div:last-child { text-align: right; }
+.trio span { display: block; font-size: 11.5px; color: rgba(190,206,230,.6); }
+.trio b { font-size: 15px; font-weight: 500; color: #eef3fb; }
+#phSky .mrow { margin: 2px 0 2px; }
+
+/* aurora */
+.aurCard { display: flex; align-items: center; gap: 10px; padding: 12px 16px; color: #9ff5c8; font-weight: 600; font-size: 14.5px;
+  border-color: rgba(120,240,170,.28); }
+.aurCard.possible { color: rgba(170,230,200,.85); }
+.aurDot { width: 9px; height: 9px; border-radius: 50%; background: #78f0aa; box-shadow: 0 0 10px #78f0aa; flex: 0 0 9px; }
+.aurBadge { display: inline-block; width: 15px; height: 15px; margin-left: 6px; border-radius: 50%; background: rgba(120,240,170,.92);
+  color: #06120c; font: 800 11px/15px Figtree, system-ui, sans-serif; text-align: center; vertical-align: 2px; }
+.aurTxt { margin-top: 8px; color: #b9f3d3; }
+.aurTxt b { color: #9ff5c8; }
+
+/* ---- build 4 ------------------------------------------------------------ */
+/* settings never run off the bottom of a short (landscape) screen */
+#set { max-height: calc(100vh - var(--topStack, 20px) - 64px); overflow-y: auto; overscroll-behavior: contain; }
+
+/* jump from the hourly card to the 10-day list */
+.jump { float: right; text-transform: none; letter-spacing: .02em; font-weight: 600; font-size: 12px;
+  color: #78e0f2; text-decoration: none; padding: 2px 0 6px 12px; }
+
+/* alert pill under the temperature */
+.halert { pointer-events: auto; display: flex; align-items: center; gap: 8px; margin: 2px 0 10px; padding: 8px 10px 8px 8px;
+  border-radius: 12px; background: rgba(12,14,20,.55); border: 1px solid rgba(255,255,255,.12);
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); text-shadow: none; max-width: 100%; }
+.halert .atag, .asItem .atag { flex: 0 0 auto; font: 800 10px/1 Figtree, system-ui, sans-serif; letter-spacing: .08em;
+  padding: 5px 6px; border-radius: 6px; color: #fff; }
+.halert .aev { flex: 1 1 auto; min-width: 0; font: 600 14.5px/1.25 Figtree, system-ui, sans-serif; color: #fff;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.halert .auntil { font-weight: 400; opacity: .78; }
+.halert .amore { font: 700 12px/1 Figtree, system-ui, sans-serif; opacity: .8; }
+.halert .achev { font-size: 20px; line-height: 1; opacity: .7; }
+.ex .atag, .sv .atag { background: #d93a3f; } .md .atag { background: #e8892e; } .mn .atag { background: #c9a227; color: #1a1400; }
+.un .atag { background: #6b7a90; }
+.halert.ex, .halert.sv { border-color: rgba(230,72,77,.65); background: rgba(70,12,16,.55); }
+.halert.md { border-color: rgba(242,153,74,.6); }
+.halert.mn { border-color: rgba(242,201,76,.5); }
+
+/* full alert text */
+#phAlerts { position: fixed; inset: 0; z-index: 40; overflow-y: auto; background: rgba(8,11,17,.97);
+  padding: 0 16px calc(24px + env(safe-area-inset-bottom)); font: 400 14.5px/1.55 Figtree, system-ui, sans-serif; color: #dfe7f3; }
+#phAlerts[hidden] { display: none; }
+.asHead { position: sticky; top: 0; display: flex; justify-content: space-between; align-items: center; padding: 16px 0 12px;
+  background: rgba(8,11,17,.97); font-size: 18px; color: #fff; z-index: 1; }
+.asHead button { border: none; background: none; color: #78e0f2; font: 600 16px Figtree, system-ui, sans-serif; padding: 6px 4px; }
+.asItem { border-radius: 16px; padding: 14px 16px; margin-bottom: 14px; background: rgba(255,255,255,.04);
+  border: 1px solid rgba(255,255,255,.08); border-left: 4px solid #6b7a90; }
+.asItem.ex, .asItem.sv { border-left-color: #d93a3f; } .asItem.md { border-left-color: #e8892e; } .asItem.mn { border-left-color: #c9a227; }
+.asTop { display: flex; align-items: center; gap: 8px; font-size: 16.5px; color: #fff; }
+.asWhen { margin-top: 4px; font-size: 13.5px; color: rgba(214,224,238,.75); }
+.asItem p { margin: 10px 0 0; }
+.asItem .asHl { font-weight: 600; color: #fff; }
+.asItem h4 { margin: 14px 0 0; font: 600 11px/1 Figtree, system-ui, sans-serif; letter-spacing: .12em; text-transform: uppercase;
+  color: rgba(170,190,220,.7); }
+.asArea { font-size: 13px; color: rgba(200,214,236,.75); }
+.asSrc { margin-top: 12px; font-size: 12px; color: rgba(170,190,220,.55); }
+.asFoot { font-size: 12px; color: rgba(170,190,220,.5); margin-top: 4px; }
+
+/* the app always has the phone keyboard */
+html.app #kbBtn, html.app #kb { display: none !important; }
+html.app #q { padding-right: 46px; }
+
+/* ---- build 6: place bar while scrolled --------------------------------- */
+#phMini { position: fixed; top: 0; left: 0; right: 0; z-index: 12; display: flex; align-items: center; gap: 10px;
+  padding: 10px 18px; background: rgba(9,12,19,.86); border-bottom: 1px solid rgba(160,190,235,.10);
+  -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+  font: 600 16px/1.2 Figtree, system-ui, sans-serif; color: #fff;
+  transform: translateY(-100%); opacity: 0; transition: transform .25s ease, opacity .25s ease; pointer-events: none; }
+#phMini.on { transform: none; opacity: 1; pointer-events: auto; }
+html:not(.phone) #phMini { display: none; }
+#phMini .mn { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#phMini .mt { font-weight: 500; font-size: 17px; }
+#phMini img { width: 28px; height: 28px; }
+
+/* ---- build 8 ------------------------------------------------------------ */
+/* longer place names step down a size instead of being cut off */
+#phHero .hn.l { font-size: 22px; }
+#phHero .hn.xl { font-size: 19px; }
+/* alert pill: name on one line, end time underneath (was cut off) */
+.halert .aev { white-space: normal; }
+.halert .aev, .halert .auntil { overflow: hidden; text-overflow: ellipsis; }
+.halert .auntil { display: block; white-space: nowrap; font-size: 12.5px; font-weight: 500; opacity: .75; margin-top: 1px; }
+.openAt { margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(160,190,235,.08); font-size: 12.5px; line-height: 1.5; color: rgba(200,214,236,.7); }
+.openAt b { color: #e8eef8; font-weight: 600; }
+.linkBtn { display: block; margin-top: 6px; padding: 0; border: none; background: none; color: #78e0f2; font: 600 13px Figtree, system-ui, sans-serif; }
+
+/* ---- build 12: My location -------------------------------------------- */
+.chip.here svg { margin-right: 2px; }
+#phHero .hpin { display: inline-block; margin-right: 6px; opacity: .85; vertical-align: 0.05em; }
+
+/* ---- build 13: date and holidays in the open day ---------------------- */
+.fxDate { font: 600 13px/1.3 Figtree, system-ui, sans-serif; letter-spacing: .02em; color: #fff; margin: 2px 0 6px; }
+.fxHol { display: inline-block; margin: 0 6px 8px 0; padding: 3px 9px; border-radius: 10px; font: 600 12px/1.4 Figtree, system-ui, sans-serif;
+  color: #f2d48a; background: rgba(242,196,109,.12); border: 1px solid rgba(242,196,109,.32); }
+.fxHol span { font-weight: 400; opacity: .8; }
+.fxHols { margin-bottom: 2px; }
+.chip .hereName { font-weight: 400; opacity: .75; }
+
+/* ---- build 20: precipitation amounts and the 24-hour summary --------------- */
+.sum24 { font-size: 14px; line-height: 1.4; color: rgba(232,238,248,.92); margin: -2px 0 12px;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.sum24:empty { display: none; }
+.hr .p { height: 14px; line-height: 14px; }
+.hr .a { font-size: 11px; height: 14px; line-height: 14px; white-space: nowrap; font-weight: 500; }
+.hr .a .rn { color: rgba(170,196,224,.82); }
+.hr .a .sn { color: #eef4ff; }
+.hr .a .ice { color: #f2b86d; font-weight: 600; }
+.hr .a .fl { vertical-align: -1px; margin-right: 2px; }

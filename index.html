@@ -280,11 +280,6 @@
       <button data-show="showLandmarks">Landmarks</button>
       <button data-show="rainOnGlass">Rain on glass</button>
     </div>
-    <h4>Advanced</h4>
-    <div id="testRow">
-      <div>Test mode<small>Test rig, sky-source readout and debug keys</small></div>
-      <button id="bTest" aria-label="Test mode"></button>
-    </div>
     <h4>About</h4>
     <div id="credits">
       <div id="appVer" class="cr-by" hidden></div>
@@ -7659,7 +7654,7 @@ if(CONFIG.search && kbEl){
 /* ---- settings panel ------------------------------------------------------ */
 const setEl = document.getElementById("set"), gearEl = document.getElementById("gear");
 function setTestMode(on){
-  CONFIG.testMode = !!on;
+  CONFIG.testMode = false;   /* public web build: no test rig */
   RIG.auto = false;
   document.body.classList.toggle("test", CONFIG.testMode);
   /* Leaving test mode always lands on the real, live weather: no forced
@@ -7672,7 +7667,6 @@ function syncSettings(){
   setEl.querySelectorAll("[data-units]").forEach(b => b.classList.toggle("on", b.dataset.units === CONFIG.units));
   setEl.querySelectorAll("[data-clock]").forEach(b => b.classList.toggle("on", (b.dataset.clock === "24") === !!CONFIG.clock24));
   setEl.querySelectorAll("[data-show]").forEach(b => b.classList.toggle("on", !!CONFIG[b.dataset.show]));
-  document.getElementById("bTest").classList.toggle("on", !!CONFIG.testMode);
   const h = CONFIG.home, same = Math.abs(h.lat - PLACE.lat) < 1e-3 && Math.abs(h.lng - PLACE.lng) < 1e-3;
   document.getElementById("homeTxt").textContent = "Home: " + (h.short || h.name) + (same ? "  (showing now)" : "");
   document.getElementById("sHomeSet").disabled = same;
@@ -7703,7 +7697,6 @@ document.getElementById("sHomeSet").addEventListener("click", () => {
 document.getElementById("sHomeGo").addEventListener("click", () => { setPlace(CONFIG.home); syncSettings(); });
 document.getElementById("sDevice").addEventListener("mousedown", e => e.preventDefault());
 document.getElementById("sDevice").addEventListener("click", () => { useMyLocation(); showUI(); });
-document.getElementById("bTest").addEventListener("click", () => setTestMode(!CONFIG.testMode));
 document.body.classList.toggle("test", !!CONFIG.testMode);
 
 /* ---- boot --------------------------------------------------------------- */
