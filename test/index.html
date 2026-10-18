@@ -2523,6 +2523,15 @@ function landSpot(w, prefCenter){
   }
   return best ? best.x0 : null;
 }
+/* Footing (app build 21): a building stands on the ground at its middle, so
+   on a slope one corner hung in the air (Alta). This fills down from the
+   building's base to the lowest ground under its whole footprint, so
+   nothing floats wherever it is placed. */
+function footing(p, xa, xb, gy, s){
+  let low = -Infinity;
+  for(let k = 0; k <= 8; k++) low = Math.max(low, nearY(xa + (xb - xa)*k/8) + 3*s);
+  if(low > gy + 0.5) p.rect(xa, gy - 1, xb - xa, low - gy + 2);
+}
 function dryAt(x){ return waterAt((x - 12*K)/W) < 0.05 && waterAt(x/W) < 0.05 && waterAt((x + 12*K)/W) < 0.05; }
 function buildProps(){
   PROPS = { kind: settlement(), near:null, detail:null, mid:null, span:null, lights:[], wins:[], cityWins:null, reds:[] };
@@ -3328,10 +3337,12 @@ function buildFarm(sc){
   /* farmhouse: two storeys, wing toward the grove, porch toward the yard */
   const hx = fx - 150*s, hw = 38*s, hg = g(hx + hw/2);
   drawHouse(p, d, hx, hg, hw, 27*s, 15*s, s, { chimney: -1, porch: 1, wing: -1 });
+  footing(p, hx - 18*s, hx + hw + 14*s, hg, s);
   PROPS.wins.push({ x: hx + 7*s, y: hg - 21*s, w: 5*s, h: 6*s });
   PROPS.wins.push({ x: hx + 24*s, y: hg - 12*s, w: 5*s, h: 7*s });
   /* barn: gambrel with a little overhang, hay hood and cupola */
   const bx = fx - 72*s, bw = 70*s, bg = g(bx + bw/2);
+  footing(p, bx, bx + bw, bg, s);
   sh([[bx, bg], [bx, bg - 30*s], [bx + bw, bg - 30*s], [bx + bw, bg]]);
   sh([[bx - 2*s, bg - 29*s], [bx + 10*s, bg - 47*s], [bx + bw/2, bg - 58*s], [bx + bw - 10*s, bg - 47*s], [bx + bw + 2*s, bg - 29*s]]);
   sh([[bx + bw/2 - 4*s, bg - 57*s], [bx + bw/2 - 4*s, bg - 64*s], [bx + bw/2 + 4*s, bg - 64*s], [bx + bw/2 + 4*s, bg - 57*s]]);
@@ -3340,7 +3351,7 @@ function buildFarm(sc){
   d.rect(bx - 2*s, bg - 29*s, bw + 4*s, 0.7*s);
   /* bins, smallest-largest-small, and the leg standing in the gap */
   const bins = [[fx + 16*s, 28*s, 32*s], [fx + 50*s, 40*s, 46*s], [fx + 104*s, 28*s, 32*s]]
-    .map(([x, w, h]) => drawBin(p, d, x, g(x + w/2), w, h, s));
+    .map(([x, w, h]) => { footing(p, x, x + w, g(x + w/2), s); return drawBin(p, d, x, g(x + w/2), w, h, s); });
   const lx = fx + 97*s, lg = g(lx), top = lg - 100*s;
   sh([[lx - 2*s, lg], [lx - 2*s, top], [lx + 2*s, top], [lx + 2*s, lg]]);
   sh([[lx - 5*s, top + 2*s], [lx - 5*s, top - 6*s], [lx + 5*s, top - 8*s], [lx + 5*s, top + 2*s]]);   // head
@@ -3522,11 +3533,11 @@ function buildTown(s, start){
   const poles = style === "eastasia" || style === "seasia", poleAt = [];
   let x = start, x0 = start;
   /* the tall thing at the edge of town */
-  if(style === "prairie"){ x0 = start - 30*s; x = start + waterTowerUS(sh, p, start, g(start), s); }
-  else if(style === "mena" && GULF.has(cc)){ x0 = start - 22*s; x = start + waterTowerGulf(sh, start, g(start), s); }
-  else if(style === "southasia" || style === "africa"){ x = start + cellTower(sh, d, start + 9*s, g(start + 9*s), s); }
-  else if(style === "postsov"){ x = start + panelBlock(sh, d, start, g(start + 45*s), s, 5, 90*s) + 14*s; }
-  else if(style === "eastasia" && cc !== "JP"){ x = start + panelBlock(sh, d, start, g(start + 22*s), s, 9, 44*s) + 12*s; }
+  if(style === "prairie"){ x0 = start - 30*s; x = start + waterTowerUS(sh, p, start, g(start), s); footing(p, start - 17*s, start + 17*s, g(start), s); }
+  else if(style === "mena" && GULF.has(cc)){ x0 = start - 22*s; x = start + waterTowerGulf(sh, start, g(start), s); footing(p, start - 3.4*s, start + 3.4*s, g(start), s); }
+  else if(style === "southasia" || style === "africa"){ x = start + cellTower(sh, d, start + 9*s, g(start + 9*s), s); footing(p, start, start + 18*s, g(start + 9*s), s); }
+  else if(style === "postsov"){ footing(p, start, start + 90*s, g(start + 45*s), s); x = start + panelBlock(sh, d, start, g(start + 45*s), s, 5, 90*s) + 14*s; }
+  else if(style === "eastasia" && cc !== "JP"){ footing(p, start, start + 44*s, g(start + 22*s), s); x = start + panelBlock(sh, d, start, g(start + 22*s), s, 9, 44*s) + 12*s; }
   /* how the street is spaced: attached rows in old European, Latin American
      and Southeast Asian towns, open lots on the prairie and in Africa */
   const GAP = { prairie:[5,14], generic:[5,14], europe:[0.4,8], med:[0.4,6], eastasia:[4,10], seasia:[0.3,3],
@@ -3603,6 +3614,9 @@ function buildTown(s, start){
       drawHouse(p, d, x, gy, w, h, roof, s, o);
       winY = gy - h*0.65;
     }
+    /* footing under the walls, and under the lower wing on whichever side it is */
+    footing(p, x, x + w, g(x + w/2), s);
+    if(extraW) footing(p, side > 0 ? x + w : x - w*0.48, side > 0 ? x + w*1.46 : x, g(x + w/2), s);
     if(r() < 0.75) PROPS.wins.push({ x: x + w*(0.2 + r()*0.45), y: winY, w: 5*s, h: 5*s });
     x += w + extraW + (GAP[0] + r()*(GAP[1] - GAP[0]))*s;
     if(poles && i % 2 === 0) poleAt.push(x - 1.5*s);
@@ -3613,8 +3627,10 @@ function buildTown(s, start){
     }
     if(i === at){
       x += 4*s;
-      x += drawWorship(p, d, x, g(x + 26*s), s, PROPS.wins) + 12*s;
-      if(style === "postsov") x += panelBlock(sh, d, x, g(x + 45*s), s, 5, 80*s) + 14*s;
+      const wg = g(x + 26*s), ww = drawWorship(p, d, x, wg, s, PROPS.wins);
+      footing(p, x, x + ww, wg, s);
+      x += ww + 12*s;
+      if(style === "postsov"){ footing(p, x, x + 80*s, g(x + 45*s), s); x += panelBlock(sh, d, x, g(x + 45*s), s, 5, 80*s) + 14*s; }
     }
   }
   if(poles){
@@ -3629,6 +3645,7 @@ function buildTown(s, start){
   }
   if(ag){
     const ex = x + 24*s, eg = g(ex + 30*s);
+    footing(p, ex, ex + 63*s, eg, s);
     for(let k=0;k<3;k++) p.rect(ex + k*21*s, eg - 92*s, 20*s, 92*s);
     p.rect(ex + 16*s, eg - 118*s, 30*s, 28*s);
     sh([[ex + 14*s, eg - 118*s], [ex + 31*s, eg - 126*s], [ex + 48*s, eg - 118*s]]);
@@ -3728,6 +3745,7 @@ function buildWild(cabinOnly){
   const L = landSpot(80*s, W*0.62);
   if(L == null) return false;
   const cx = L + 40*s, gy = g(cx);
+  footing(p, cx - 22*s, cx + 22*s, gy, s);
   p.rect(cx - 22*s, gy - 20*s, 44*s, 20*s);
   poly([[cx - 28*s, gy - 18*s], [cx, gy - 44*s], [cx + 28*s, gy - 18*s]]);
   p.rect(cx + 10*s, gy - 46*s, 6*s, 14*s);
@@ -3741,10 +3759,10 @@ function windSide(){
   const S = SCENE, toward = d2r(norm360(S.dir + 180));
   return -FACE()*Math.sin(toward);
 }
-function drawTrees(tSec, col){
+function drawTrees(tSec, fill){
   const S = SCENE, side = windSide(), style = treeStyle();
   const steady = clamp(S.mph/45, 0, 1);
-  ctx.fillStyle = rgba(col, 1);
+  ctx.fillStyle = fill;
   for(const t of TREES){
     const gy = nearY(t.x) + 3*K;
     const gust = Math.sin(tSec*t.sp*(1 + steady) + t.ph)*0.5 + Math.sin(tSec*t.sp*2.3 + t.ph*1.7)*0.25;
@@ -4620,14 +4638,16 @@ function drawNearAndFloor(tSec){
   g.addColorStop(1, rgba(mixc(c, [4,5,8], 0.80*nf), 1));
   ctx.fillStyle = g;
   ctx.fill(RIDGE_PATH[2]);
-  ctx.fillStyle = rgba(c, 1);
+  /* app build 21: buildings and trees take the ground's own shading, so
+     where they meet the ground there is no seam. Filled flat in the lighter
+     top colour they read as cut-outs hovering over the darker ground. */
   if(PROPS.near) ctx.fill(PROPS.near);
   /* faint seams and roof edges, by day only */
   if(PROPS.detail && SCENE.dayness > 0.05){
     ctx.fillStyle = rgba(mixc(c, PAL.sky, 0.45), 0.35*SCENE.dayness*(1 - SCENE.haze*0.7));
     ctx.fill(PROPS.detail);
   }
-  drawTrees(tSec, c);
+  drawTrees(tSec, g);
   drawFlag(tSec);
   drawPropLights();
 }
