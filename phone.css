@@ -265,3 +265,19 @@ html:not(.phone) #phMini { display: none; }
 .hr .a .sn { color: #eef4ff; }
 .hr .a .ice { color: #f2b86d; font-weight: 600; }
 .hr .a .fl { vertical-align: -1px; margin-right: 2px; }
+
+/* forecast discussion (build 22) */
+#phAfd { cursor: pointer; }
+.afdBy { font-size: 12px; color: rgba(170,190,220,.6); margin: -4px 0 8px; }
+.afd { font-size: 13.5px; line-height: 1.5; color: rgba(214,224,238,.86); }
+.afd .afdSec.more { display: none; }
+.afd.open .afdSec.more { display: block; }
+.afd:not(.open) .afdSec:first-child p:nth-of-type(n+2) { display: none; }
+.afd:not(.open) .afdSec:first-child p:first-of-type { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+.afdSec { margin-top: 10px; }
+.afdSec:first-child { margin-top: 0; }
+.afdH { font-weight: 600; color: #cfe0f6; margin-bottom: 4px; }
+.afdH span { font-weight: 400; color: rgba(170,190,220,.6); font-size: 12px; }
+.afd p { margin: 0 0 8px; }
+.afd p.afdLi { padding-left: 14px; position: relative; margin-bottom: 4px; }
+.afd p.afdLi::before { content: "\2022"; position: absolute; left: 2px; color: #78e0f2; }

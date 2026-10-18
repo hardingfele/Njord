@@ -48,6 +48,7 @@ ph.innerHTML =
     '<div class="grid2" id="phDetails"></div>' +
     '<section class="pc" id="phSky" style="margin-top:12px"></section>' +
     '<section class="pc" id="phDays"><h3>10-day forecast <span class="tapHint">tap a day</span></h3><div class="days"></div></section>' +
+    '<section class="pc" id="phAfd" hidden></section>' +
     '<section class="pc" id="phPlaces"><h3>Places</h3><div class="chips"></div>' +
       '<button class="pbtn" id="phSave"></button>' +
       '<button class="pbtn" id="phLoc">Use my location</button>' +
@@ -131,6 +132,145 @@ function render(force){
     return;
   }
   renderHours(); renderDetails(); renderDays(); renderSky(); renderAurora(); skySig = "";
+  loadAfd();
+}
+
+/* ---- forecast discussion (app build 22) ------------------------------------
+   US only: the local National Weather Service office's Area Forecast
+   Discussion - the forecasters' own write-up of what they expect and how
+   sure they are. api.weather.gov/points gives the office (cwa), the product
+   list gives the latest AFD's id, and the product gives its text. The text
+   is cleaned up for reading: hard line breaks joined, old all-caps products
+   put in sentence case, and the aviation / marine / fire / watches sections
+   left out. Collapsed to the first section until tapped. */
+const AFD_HDR = { headers: { "Accept": "application/geo+json" } };
+const AFD_SKIP = /^(AVIATION|MARINE|FIRE WEATHER|HYDROLOGY|CLIMATE|TIDES|BEACHES|RIP CURRENTS|[A-Z]{3} WATCHES|.*WATCHES\/WARNINGS|PRELIMINARY POINT TEMPS|EQUIPMENT|PUBLIC INFORMATION)/;
+let afdOpen = false, afdKey = "";
+function afdJSON(url, maxAge){
+  return cachedJSON(url, maxAge, u => fetch(u, AFD_HDR).then(r => r.ok ? r.json() : Promise.reject("HTTP " + r.status)));
+}
+function loadAfd(){
+  const box = $("phAfd"), P = PLACE;
+  if(String(P.cc || "").toUpperCase() !== "US"){ box.hidden = true; box.innerHTML = ""; afdKey = ""; return; }
+  const key = P.lat.toFixed(3) + "," + P.lng.toFixed(3);
+  if(key !== afdKey){ afdKey = key; afdOpen = false; }
+  afdJSON("https://api.weather.gov/points/" + P.lat.toFixed(4) + "," + P.lng.toFixed(4), 24*3600000)
+    .then(j => {
+      const cwa = j && j.properties && j.properties.cwa;
+      if(!cwa) throw "no office";
+      return afdJSON("https://api.weather.gov/products/types/AFD/locations/" + cwa, 15*60000);
+    })
+    .then(j => {
+      const list = (j && (j["@graph"] || j.features)) || [];
+      const first = list[0] && (list[0].id || (list[0].properties && list[0].properties.id));
+      if(!first) throw "no discussion";
+      return afdJSON("https://api.weather.gov/products/" + first, 6*3600000);
+    })
+    .then(prod => {
+      if(afdKey !== key) return;                     // moved on to another place meanwhile
+      const a = parseAfd(prod.productText || "");
+      if(!a.sections.length){ box.hidden = true; return; }
+      a.at = prod.issuanceTime; a.office = a.office || prod.issuingOffice || "";
+      drawAfd(box, a);
+    })
+    .catch(() => { if(afdKey === key){ box.hidden = true; box.innerHTML = ""; } });
+}
+/* AFD layout: header lines, then sections that each start with ".NAME..."
+   and end with "&&"; "$$" ends the product. */
+function parseAfd(txt){
+  txt = txt.replace(/\r/g, "");
+  const om = txt.match(/National Weather Service ([^\n]+)/i);
+  const office = om ? om[1].trim() : "";
+  let body = txt.split("$$")[0];
+  const start = body.search(/^\.[A-Za-z][^\n]*?\.\.\./m);
+  if(start < 0) return { office, sections: [] };
+  body = body.slice(start);
+  const sections = [];
+  let pendingSub = "";
+  for(const chunk of body.split(/\n&&\s*\n?/)){
+    const parts = chunk.split(/^(?=\.[A-Za-z][^\n]*?\.\.\.)/m);
+    for(const part of parts){
+      const m = part.match(/^\.([^\n]*?)\.\.\.\s*([\s\S]*)$/);
+      if(!m) continue;
+      let name = m[1].trim(), sub = "";
+      const sm = name.match(/^(.*?)\s*\/(.*)\/\s*$/);   // ".SHORT TERM /Tonight through Monday/..."
+      if(sm){ name = sm[1]; sub = sm[2]; }
+      if(AFD_SKIP.test(name.toUpperCase())) continue;
+      let rest = m[2];
+      const pm = rest.match(/^\s*\(([^)\n]{3,60})\)\s*/);    // ".SHORT TERM...(TONIGHT THROUGH MONDAY)"
+      if(pm && !sub){ sub = pm[1]; rest = rest.slice(pm[0].length); }
+      const paras = afdParas(rest);
+      if(paras.length) sections.push({ name: afdTitle(name), sub: afdSub(sub), paras });
+      else if(sub && sections.length === 0) pendingSub = sub;
+    }
+  }
+  if(pendingSub && sections[0] && !sections[0].sub) sections[0].sub = afdSub(pendingSub);
+  return { office: afdOffice(office), sections };
+}
+/* "TWIN CITIES/CHANHASSEN MN" -> "Twin Cities/Chanhassen MN" */
+function afdOffice(o){
+  if(o !== o.toUpperCase()) return o;
+  return o.toLowerCase().replace(/(^|[\s\/-])([a-z])/g, (m, a, b) => a + b.toUpperCase())
+          .replace(/\s([a-z]{2})$/i, (m, st) => " " + st.toUpperCase());
+}
+function afdSub(t){
+  t = String(t || "").trim();
+  if(!t) return "";
+  if(t === t.toUpperCase()) t = afdSentence(t);
+  return t;
+}
+function afdParas(t){
+  const caps = (t.match(/[A-Z]/g) || []).length > 3*(t.match(/[a-z]/g) || []).length;
+  const out = [];
+  for(let blk of t.trim().split(/\n\s*\n/)){
+    blk = blk.trim();
+    if(!blk || /^issued at /i.test(blk) && blk.length < 60) continue;
+    /* bullet lists stay one line per item; everything else is joined */
+    const lines = blk.split("\n").map(l => l.trim());
+    const items = [];
+    for(const l of lines){
+      if(/^([-*\u2022]|\d+\))\s/.test(l) || !items.length) items.push(l);
+      else items[items.length - 1] += " " + l;
+    }
+    for(let it of items){
+      it = it.replace(/\s+/g, " ").replace(/^issued at [^.]*\.\.\.\s*/i, "").trim();
+      if(!it) continue;
+      if(caps) it = afdSentence(it);
+      out.push(it);
+    }
+  }
+  return out;
+}
+function afdSentence(s){
+  s = s.toLowerCase().replace(/(^|[.!?]\s+|^[-*]\s*)([a-z])/g, (m, a, b) => a + b.toUpperCase());
+  /* units, times and the usual short forms stay upper case */
+  return s.replace(/\b(nws|cdt|cst|edt|est|mdt|mst|pdt|pst|akdt|akst|hst|utc|mph|kts?|vfr|mvfr|ifr|lifr|cape|pwats?|qpf|nbm|gfs|ecmwf|nam|hrrr|rap|cams|sref|gefs|eps|mcs|llj|h5|h7|h8|h85|h850|h500|caa|waa|tstms?|svr|wfo|spc|wpc|cpc|nd|sd|mn|wi|ia|ks|tx|nv|az|nm|wy|mt|ut|ky|tn|fl|ny|nj|i-\d+|\d+z)\b/gi, w => w.toUpperCase())
+    .replace(/\bi\b/g, "I")
+    .replace(/\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday|january|february|march|april|june|july|august|september|october|november|december|minnesota|dakota|wisconsin|iowa|canada|manitoba|ontario|saskatchewan|red river|rockies|plains|great lakes|lake superior|lake michigan)\b/g,
+             w => w.replace(/(^|\s)([a-z])/g, (m, a, b) => a + b.toUpperCase()));
+}
+function afdTitle(n){
+  n = n.trim().toLowerCase();
+  return n.charAt(0).toUpperCase() + n.slice(1);
+}
+function drawAfd(box, a){
+  const when = a.at ? (() => {
+    const z = zonedParts(new Date(a.at), PLACE.tz), now = zonedParts(new Date(), PLACE.tz);
+    const same = z.year === now.year && z.month === now.month && z.day === now.day;
+    return (same ? "" : new Date(a.at).toLocaleDateString(undefined, { weekday: "short", timeZone: PLACE.tz }) + " ") + fmtTime(z.hour*60 + z.minute);
+  })() : "";
+  const sec = (s, i) => '<div class="afdSec' + (i ? " more" : "") + '"><div class="afdH">' + esc(s.name) +
+    (s.sub ? ' <span>' + esc(s.sub) + '</span>' : '') + '</div>' +
+    s.paras.map(p => '<p' + (/^[-*\u2022]\s/.test(p) ? ' class="afdLi"' : '') + '>' + esc(p.replace(/^[-*\u2022]\s*/, "")) + '</p>').join("") + '</div>';
+  box.innerHTML = '<h3>Forecast discussion <span class="tapHint">' + (afdOpen ? "tap to close" : "tap to read") + '</span></h3>' +
+    '<div class="afdBy">NWS ' + esc(a.office) + (when ? ' &middot; ' + esc(when) : '') + '</div>' +
+    '<div class="afd' + (afdOpen ? " open" : "") + '">' + a.sections.map(sec).join("") + '</div>';
+  box.hidden = false;
+  box.onclick = () => {
+    afdOpen = !afdOpen;
+    box.querySelector(".afd").classList.toggle("open", afdOpen);
+    box.querySelector(".tapHint").textContent = afdOpen ? "tap to close" : "tap to read";
+  };
 }
 
 /* "Township of Dovre" (how the phone's lookup names rural spots) reads as
