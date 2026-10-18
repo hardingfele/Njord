@@ -2483,7 +2483,7 @@ function seedLand(){
   TREES = [];
   for(let i=0;i<slots.length && TREES.length < count;i++){
     const x = slots[i]*W + (tr() - 0.5)*30*K;
-    const hit = PROPS.span && x > PROPS.span[0] - 20*K && x < PROPS.span[1] + 20*K;
+    const hit = propsHit(x, 20*K);
     if(hit || waterAt(x/W) > 0.3 || landmarkGapAt(x - 25*K, x + 25*K)) continue;
     const sc = style === "scrub" ? 0.55 : 1;
     TREES.push({ x, h:(20 + tr()*16)*K*sc*(style === "conifer" ? 1.4 : 1),
@@ -2504,7 +2504,7 @@ let PROPS = { kind:"farm", near:null, mid:null, span:null, lights:[], wins:[], c
    normally go. When a farm or town does not fit it is tried smaller; failing
    that it becomes a lone cabin; failing that (a view of almost all water)
    nothing is built. */
-function landSpot(w, prefCenter){
+function landSpot(w, prefCenter, avoid){
   const pad = 16*K, step = Math.max(4, 6*K);
   let best = null;
   for(let x0 = pad; x0 + w <= W - pad; x0 += step){
@@ -2514,6 +2514,7 @@ function landSpot(w, prefCenter){
     }
     if(!dry) continue;
     if(typeof landmarkGapAt === "function" && landmarkGapAt(x0, x0 + w)) continue;   // never in front of a landmark
+    if(avoid && avoid.some(a => x0 < a[1] + 24*K && x0 + w > a[0] - 24*K)) continue;   // clear of the other group
     const d = Math.abs(x0 + w/2 - prefCenter);
     if(!best || d < best.d) best = { x0, d };
   }
@@ -2534,7 +2535,7 @@ function buildProps(){
   const scaled = fn => [1, 0.8, 0.65].some(sc => fn(sc));
   let ok;
   if(PROPS.kind === "farm") ok = scaled(buildFarm);
-  else if(PROPS.kind === "town") ok = scaled(placeTown);
+  else if(PROPS.kind === "town") ok = scaled(placeTown) || placeTownSplit();
   else if(PROPS.kind === "city"){ buildCity(); ok = true; }
   else ok = buildWild();
   if(!ok && PROPS.kind !== "wild" && PROPS.kind !== "city") ok = buildWild(true);
@@ -3368,6 +3369,54 @@ function buildFarm(sc){
    country, a concrete grain elevator. Streetlights after dark. */
 /* The town's width depends on its random house sizes, so it is laid out once
    off to the side to measure it, then built for real on a dry stretch. */
+/* Split town (app build 21): where no single dry stretch holds the whole
+   street - Tromso, looking across the sound with the Arctic Cathedral in the
+   middle - the town drops a house at a time and splits into two groups, one
+   either side of the water or landmark, rather than shrinking to a cabin.
+   If that still does not fit, the water tower / grain elevator are left out
+   (bare) before giving up. */
+function measureTown(s, opt, pref, avoid){
+  const nl = PROPS.lights.length, nw = PROPS.wins.length, nr = PROPS.reds.length;
+  const sp = buildTown(s, 0, opt);
+  PROPS.lights.length = nl; PROPS.wins.length = nw; PROPS.reds.length = nr;
+  PROPS.near = null; PROPS.detail = null; PROPS.span = null;
+  const w = sp[1] - sp[0];
+  const L = landSpot(w, pref, avoid);
+  return L == null ? null : { start: L - sp[0], span: [L, L + w] };
+}
+function placeTownSplit(){
+  const s = K*0.8;
+  for(let total = townN() - 1; total >= 2; total--)
+  for(const bare of [false, true]){
+    const n1 = Math.ceil(total/2), n2 = total - n1;
+    if(n2 >= 2){
+      for(const [pa, pb] of [[0.30, 0.72], [0.70, 0.28]]){
+        const a = measureTown(s, { n: n1, bare }, W*pa);
+        if(!a) continue;
+        const b = measureTown(s, { n: n2, part2: true }, W*pb, [a.span]);
+        if(!b) continue;
+        buildTown(s, a.start, { n: n1, bare });
+        const first = { near: PROPS.near, detail: PROPS.detail, span: PROPS.span };
+        buildTown(s, b.start, { n: n2, part2: true });
+        const near = new Path2D(), det = new Path2D();
+        near.addPath(first.near); near.addPath(PROPS.near);
+        det.addPath(first.detail); det.addPath(PROPS.detail);
+        PROPS.spans = [first.span, PROPS.span];
+        PROPS.near = near; PROPS.detail = det;
+        PROPS.span = [Math.min(first.span[0], PROPS.span[0]), Math.max(first.span[1], PROPS.span[1])];
+        return true;
+      }
+    }
+    const one = measureTown(s, { n: total, bare }, W*0.40);
+    if(one){ buildTown(s, one.start, { n: total, bare }); return true; }
+  }
+  return false;
+}
+/* trees and the flag keep clear of the buildings - of each group in a split town */
+function propsHit(x, pad){
+  const sp = PROPS.spans || (PROPS.span ? [PROPS.span] : []);
+  return sp.some(a => x > a[0] - pad && x < a[1] + pad);
+}
 function placeTown(sc){
   const s = K*(sc || 1);
   const nl = PROPS.lights.length, nw = PROPS.wins.length, nr = PROPS.reds.length;
@@ -3520,16 +3569,24 @@ function wire(sh, a, b, sag, s){                   // sagging wire as a thin ban
   }
   sh(top.concat(bot.reverse()));
 }
-function buildTown(s, start){
+function townN(){
+  const style = townStyle();
+  return style === "seasia" ? 11 : style === "europe" || style === "med" || style === "latam" ? 9 : 8;
+}
+/* opt (app build 21): n = how many houses; part2 = the second group of a
+   split town - its own houses, no tall thing at the edge, no place of worship */
+function buildTown(s, start, opt){
+  opt = opt || {};
   const p = new Path2D(), d = new Path2D(), sh = shapeOn(p);
   const g = x => nearY(x) + 3*s;
-  const r = rndSeeded(0x70A7);
+  const r = rndSeeded(opt.part2 ? 0x70A9 : 0x70A7);
   const cc = String(PLACE.cc || "").toUpperCase(), style = townStyle();
   const ag = style === "prairie" && (biomeKind() === "green" || biomeKind() === "dry");
   const poles = style === "eastasia" || style === "seasia", poleAt = [];
   let x = start, x0 = start;
   /* the tall thing at the edge of town */
-  if(style === "prairie"){ x0 = start - 30*s; x = start + waterTowerUS(sh, p, start, g(start), s); footing(p, start - 17*s, start + 17*s, g(start), s); }
+  if(opt.part2 || opt.bare){}
+  else if(style === "prairie"){ x0 = start - 30*s; x = start + waterTowerUS(sh, p, start, g(start), s); footing(p, start - 17*s, start + 17*s, g(start), s); }
   else if(style === "mena" && GULF.has(cc)){ x0 = start - 22*s; x = start + waterTowerGulf(sh, start, g(start), s); footing(p, start - 3.4*s, start + 3.4*s, g(start), s); }
   else if(style === "southasia" || style === "africa"){ x = start + cellTower(sh, d, start + 9*s, g(start + 9*s), s); footing(p, start, start + 18*s, g(start + 9*s), s); }
   else if(style === "postsov"){ footing(p, start, start + 90*s, g(start + 45*s), s); x = start + panelBlock(sh, d, start, g(start + 45*s), s, 5, 90*s) + 14*s; }
@@ -3538,8 +3595,8 @@ function buildTown(s, start){
      and Southeast Asian towns, open lots on the prairie and in Africa */
   const GAP = { prairie:[5,14], generic:[5,14], europe:[0.4,8], med:[0.4,6], eastasia:[4,10], seasia:[0.3,3],
                 southasia:[1,6], mena:[3,10], postsov:[8,18], latam:[0.3,4], africa:[9,20] }[style];
-  const N = style === "seasia" ? 11 : style === "europe" || style === "med" || style === "latam" ? 9 : 8;
-  const at = Math.floor(N/2) - 1;                  // the place of worship sits mid-street
+  const N = opt.n || townN();
+  const at = opt.part2 ? -1 : Math.max(0, Math.floor(N/2) - 1);   // the place of worship sits mid-street
   for(let i=0;i<N;i++){
     const a = r(), b = r(), c = r(), side = r() < 0.5 ? -1 : 1;
     let w, top, winY, extraW = 0;
@@ -3639,7 +3696,7 @@ function buildTown(s, start){
       wire(sh, { x: a.x, y: a.y + 7*s }, { x: b.x, y: b.y + 7*s }, 4*s, s);
     }
   }
-  if(ag){
+  if(ag && !opt.part2 && !opt.bare){
     const ex = x + 24*s, eg = g(ex + 30*s);
     footing(p, ex, ex + 63*s, eg, s);
     for(let k=0;k<3;k++) p.rect(ex + k*21*s, eg - 92*s, 20*s, 92*s);
@@ -4714,7 +4771,7 @@ function placeFlag(){
      wind, so keep that much room from both edges (app build 11: on a phone
      the flag landed 24 px from the left edge and blew off the screen) */
   const edge = Math.max(30*K, H*0.042 + 10);
-  const clear = x => !(PROPS.span && x > PROPS.span[0] - 40*K && x < PROPS.span[1] + 40*K)
+  const clear = x => !propsHit(x, 40*K)
                      && !PROPS.lights.some(l => Math.abs(l.x - x) < 45*K)
                      && dryAt(x) && x > edge && x < W - edge;
   FLAG_X = [0.34, 0.24, 0.82, 0.90].map(f => f*W).find(clear);
