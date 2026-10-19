@@ -2520,7 +2520,7 @@ function landSpot(w, prefCenter, avoid){
   }
   return best ? best.x0 : null;
 }
-/* Footing (app build 21): a building stands on the ground at its middle, so
+/* Footing (app build 22): a building stands on the ground at its middle, so
    on a slope one corner hung in the air (Alta). This fills down from the
    building's base to the lowest ground under its whole footprint, so
    nothing floats wherever it is placed. */
@@ -3369,7 +3369,7 @@ function buildFarm(sc){
    country, a concrete grain elevator. Streetlights after dark. */
 /* The town's width depends on its random house sizes, so it is laid out once
    off to the side to measure it, then built for real on a dry stretch. */
-/* Split town (app build 21): where no single dry stretch holds the whole
+/* Split town (app build 23): where no single dry stretch holds the whole
    street - Tromso, looking across the sound with the Arctic Cathedral in the
    middle - the town drops a house at a time and splits into two groups, one
    either side of the water or landmark, rather than shrinking to a cabin.
@@ -3573,7 +3573,7 @@ function townN(){
   const style = townStyle();
   return style === "seasia" ? 11 : style === "europe" || style === "med" || style === "latam" ? 9 : 8;
 }
-/* opt (app build 21): n = how many houses; part2 = the second group of a
+/* opt (app build 23): n = how many houses; part2 = the second group of a
    split town - its own houses, no tall thing at the edge, no place of worship */
 function buildTown(s, start, opt){
   opt = opt || {};
@@ -4691,7 +4691,7 @@ function drawNearAndFloor(tSec){
   g.addColorStop(1, rgba(mixc(c, [4,5,8], 0.80*nf), 1));
   ctx.fillStyle = g;
   ctx.fill(RIDGE_PATH[2]);
-  /* app build 21: buildings and trees take the ground's own shading, so
+  /* app build 22: buildings and trees take the ground's own shading, so
      where they meet the ground there is no seam. Filled flat in the lighter
      top colour they read as cut-outs hovering over the darker ground. */
   if(PROPS.near) ctx.fill(PROPS.near);

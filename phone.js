@@ -100,7 +100,18 @@ function sameTown(a, b){
   let km = 999; try { km = kmBetween(a.lat, a.lng, b.lat, b.lng); } catch(e){}
   return km < 3 || (km < 12 && String(a.short || a.name).split(",")[0].trim().toLowerCase() === String(b.short || b.name).split(",")[0].trim().toLowerCase());
 }
-function loadPlaces(){ try { const j = JSON.parse(STORE.get(PKEY) || "[]"); return Array.isArray(j) ? j : []; } catch(e){ return []; } }
+/* app build 26: saved places are de-duplicated by town, not exact
+   coordinates - the same township from GPS and from search sits a few
+   hundred metres apart and was saved twice. Lists saved before this are
+   cleaned once on load (the first copy is kept). */
+function loadPlaces(){
+  let j; try { j = JSON.parse(STORE.get(PKEY) || "[]"); } catch(e){ return []; }
+  if(!Array.isArray(j)) return [];
+  const out = [];
+  for(const p of j) if(p && !out.some(q => sameTown(q, p))) out.push(p);
+  if(out.length !== j.length) savePlaces(out);
+  return out;
+}
 function savePlaces(list){ STORE.set(PKEY, JSON.stringify(list)); }
 function goPlace(p){ if(!p) return; openDay = -1; setPlace(p); ph.scrollTo({ top: 0, behavior: "smooth" }); render(true); }
 
@@ -135,7 +146,7 @@ function render(force){
   loadAfd();
 }
 
-/* ---- forecast discussion (app build 22) ------------------------------------
+/* ---- forecast discussion (app build 24) ------------------------------------
    US only: the local National Weather Service office's Area Forecast
    Discussion - the forecasters' own write-up of what they expect and how
    sure they are. api.weather.gov/points gives the office (cwa), the product
@@ -844,7 +855,7 @@ function renderPlaces(){
   $("phPlaces").querySelector(".chips").innerHTML =
     '<span class="chip here' + (isHere(PLACE) ? " on" : "") + '" data-here="1">' + pin + 'My location' +
       (dup >= 0 ? ' <span class="hereName">&middot; ' + esc(placeName(list[dup])) + '</span><span class="x" data-x="' + dup + '">&times;</span>' : '') + '</span>' +
-    list.map((p, i) => i === dup ? '' : '<span class="chip' + (samePlace(p, PLACE) ? " on" : "") + '" data-i="' + i + '">' +
+    list.map((p, i) => i === dup ? '' : '<span class="chip' + (sameTown(p, PLACE) ? " on" : "") + '" data-i="' + i + '">' +
                         esc(placeName(p)) + '<span class="x" data-x="' + i + '">&times;</span></span>').join("");
   let home = null;
   try { home = JSON.parse(STORE.get("weather.home") || "null"); } catch(e){}
@@ -852,7 +863,7 @@ function renderPlaces(){
     ? 'Opens at home: <b>' + esc(placeName(home)) + '</b><button class="linkBtn" id="phClearHome">Open at my location instead</button>'
     : 'Opens at your current location. To always open somewhere else, pick it and choose <b>Make current place home</b> in settings.';
   const ch = $("phClearHome"); if(ch) ch.addEventListener("click", clearHome);
-  const saved = list.some(p => samePlace(p, PLACE));
+  const saved = list.some(p => sameTown(p, PLACE));
   const btn = $("phSave");
   btn.textContent = saved ? "Saved ✓" : "Save " + placeName(PLACE);
   btn.disabled = saved;
@@ -875,7 +886,7 @@ $("phPlaces").addEventListener("click", e => {
 });
 $("phSave").addEventListener("click", () => {
   const list = loadPlaces();
-  if(!list.some(p => samePlace(p, PLACE))){ list.push(Object.assign({}, PLACE)); savePlaces(list); }
+  if(!list.some(p => sameTown(p, PLACE))){ list.push(Object.assign({}, PLACE)); savePlaces(list); }
   render(true);
 });
 $("phLoc").addEventListener("click", () => { try { useMyLocation(); } catch(e){} });
