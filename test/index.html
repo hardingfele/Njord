@@ -6415,6 +6415,9 @@ function auroraNote(){
     /* strength as seen from here: a bright oval far off on the horizon
        looks like a moderate one */
     const word = a.score >= 40 ? "Strong" : a.score >= 15 ? "Moderate" : "Weak";
+    /* a weak one (often faint and low on the horizon) may well not be seen
+       by eye, so it reads "possible" rather than "active" */
+    if(word === "Weak") return { text: "Weak aurora possible, " + whereWords(a), level: "possible" };
     return { text: word + " aurora active, " + whereWords(a), level: "active" };
   }
   const now = Date.now();

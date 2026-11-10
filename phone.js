@@ -611,56 +611,102 @@ function windWords(list, d){
   const gust = isGusty(hi, d.gust) ? ", with gusts up to " + d.gust + " " + spdUnit() : "";
   return " " + from + range + " " + spdUnit() + gust + ".";
 }
-function dayText(i){
-  const days = WX.days, d = days[i];
-  const all = hoursOn(d.date), day = all.filter(h => h.hr >= 7 && h.hr <= 19);
-  const wet = all.filter(wetHour);
-  let s = "";
+/* "Tuesday" for the day's heading; today stays "Today" / "Tonight" */
+function weekdayName(iso){
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso || "");
+  if(!m) return "";
+  return new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])).toLocaleDateString("en-US", { weekday: "long", timeZone: "UTC" });
+}
+function nightWhen(wet, n){
+  if(wet.length >= n*0.7) return "through the night";
+  if(wet.every(h => h.hr >= 18)) return "in the evening";
+  if(wet.every(h => h.hr < 12)) return "after midnight";
+  return "overnight";
+}
+/* sky and precipitation for one part (day 6 am-6 pm, or night 6 pm-6 am) */
+function partSky(list, night){
+  const wet = list.filter(wetHour);
   if(wet.length){
-    const w = wmo(d.code);
-    const code = w.precip && w.precip !== "fog" ? d.code
-               : wet.reduce((a, h) => CODE_RANK(h.code) > CODE_RANK(a) ? h.code : a, wet[0].code);
-    const c = chance(d.pop);
-    s = c ? cap(precipWords(code)) + c + " " + when(wet) + "."
-          : "A slight chance of " + precipWords(code) + " " + when(wet) + ".";
-    const dry = day.filter(h => !wetHour(h));
-    if(dry.length >= 4 && wet.length < 12) s += " Otherwise " + skyWord(dry, false) + ".";
-  } else if(d.code === 45 || d.code === 48){
-    s = (d.code === 48 ? "Freezing fog" : "Fog") + ", then " + skyWord(day.filter(h => wmo(h.code).sky !== "overcast" || h.code < 45), false) + ".";
-  } else {
-    s = cap(skyWord(day.length ? day : all, false)) + ".";
+    const code = wet.reduce((a, h) => CODE_RANK(h.code) > CODE_RANK(a) ? h.code : a, wet[0].code);
+    const pops = list.map(h => h.pop).filter(v => v != null);
+    const c = chance(pops.length ? Math.max(...pops) : null);
+    const w = night ? nightWhen(wet, list.length) : when(wet);
+    let s = c ? cap(precipWords(code)) + c + " " + w + "."
+              : "A slight chance of " + precipWords(code) + " " + w + ".";
+    const dry = list.filter(h => !wetHour(h));
+    if(dry.length >= 4 && wet.length < list.length*0.8) s += " Otherwise " + skyWord(dry, night) + ".";
+    return s;
   }
-  let hiTxt = " High " + d.hi + deg;
-  if(i > 0){
-    const diff = d.hi - days[i - 1].hi, prev = i - 1 === 0 ? "today" : i - 1 === 1 ? "tomorrow" : cardLabel(i - 1, days[i - 1].date);
-    if(diff >= 8) hiTxt += ", much warmer than " + prev;
-    else if(diff >= 4) hiTxt += ", warmer than " + prev;
-    else if(diff <= -8) hiTxt += ", much colder than " + prev;
-    else if(diff <= -4) hiTxt += ", cooler than " + prev;
+  const fog = list.filter(h => h.code === 45 || h.code === 48);
+  if(fog.length >= 3){
+    const rest = list.filter(h => h.code !== 45 && h.code !== 48);
+    return (fog.some(h => h.code === 48) ? "Freezing fog" : "Fog") +
+           (rest.length >= 3 ? (night ? ", otherwise " : ", then ") + skyWord(rest, night) : "") + ".";
   }
-  s += hiTxt + ". Low " + d.lo + deg + ".";
-  s += windWords(day.length ? day : all, d);
-  if(d.pop != null && d.pop >= 20){
-    s += " Chance of precipitation " + Math.round(d.pop) + "%.";
-    s += amountWords(d, wmo(d.code).precip);
-  }
-  /* tonight, for today only. Once the day is over (6 pm, or after sunset
-     from 3 pm) the daytime text is dropped and only tonight is shown. */
-  if(i === 0 && days[1]){
-    const p = zonedParts(new Date(), PLACE.tz);
-    const sunDown = SCENE && SCENE.sun && SCENE.sun.alt < -0.833;
-    const evening = p.hour >= 18 || (p.hour >= 15 && sunDown);
-    const night = all.filter(h => h.hr >= Math.max(18, p.hour)).concat(hoursOn(days[1].date).filter(h => h.hr <= 7));
-    if(night.length >= 4){
-      const nWet = night.filter(wetHour), lo = Math.min(...night.map(h => h.temp));
-      const maxPop = Math.max(0, ...night.map(h => h.pop || 0));
-      let t = nWet.length ? cap(precipWords(nWet[0].code)) + (maxPop >= 70 ? " likely" : maxPop >= 40 ? " possible" : " in spots")
-                          : cap(skyWord(night, true));
-      const tn = "<b>Tonight:</b> " + t + ", low around " + lo + deg + ".";
-      s = evening ? tn : s + "<br><br>" + tn;
-    }
+  return cap(skyWord(list, night)) + ".";
+}
+/* wind, chance and amount for one part, from its hours */
+function partExtras(list, fallback){
+  const winds = list.filter(h => h.wind != null);
+  const top = winds.length ? winds.reduce((a, h) => h.wind > a.wind ? h : a) : null;
+  const gusts = list.map(h => h.gust).filter(v => v != null);
+  const pd = top ? { wind: top.wind, dir: top.dir, gust: gusts.length ? Math.max(...gusts) : null } : fallback;
+  let s = windWords(list, pd);
+  const pops = list.map(h => h.pop).filter(v => v != null);
+  const pop = pops.length ? Math.max(...pops) : fallback.pop;
+  if(pop != null && pop >= 20){
+    s += " Chance of precipitation " + Math.round(pop) + "%.";
+    const amts = list.map(h => h.amt).filter(v => v != null);
+    const wet = list.filter(wetHour);
+    const kind = wet.length ? wmo(wet[0].code).precip : wmo(fallback.code).precip;
+    s += amountWords({ amt: amts.length ? amts.reduce((a, b) => a + b, 0) : fallback.amt }, kind);
   }
   return s;
+}
+/* The written forecast for a day, in two parts like the Weather Service:
+   "Tuesday: ..." (6 am-6 pm, with the high) and "Tuesday night: ..."
+   (6 pm-6 am, with the low). Today drops its daytime part once the day is
+   over (6 pm, or after sunset from 3 pm) and shows only tonight. */
+function dayText(i){
+  const days = WX.days, d = days[i];
+  const all = hoursOn(d.date);
+  const next = days[i + 1] ? hoursOn(days[i + 1].date) : [];
+  const dayHrs = all.filter(h => h.hr >= 6 && h.hr < 18);
+  let nightFrom = 18, evening = false;
+  if(i === 0){
+    const p = zonedParts(new Date(), PLACE.tz);
+    const sunDown = SCENE && SCENE.sun && SCENE.sun.alt < -0.833;
+    evening = p.hour >= 18 || (p.hour >= 15 && sunDown);
+    nightFrom = Math.max(18, p.hour);
+  }
+  const nightHrs = all.filter(h => h.hr >= nightFrom).concat(next.filter(h => h.hr < 6));
+  const dayName = i === 0 ? "Today" : weekdayName(d.date);
+  const nightName = i === 0 ? "Tonight" : dayName + " night";
+  const parts = [];
+
+  if(!evening){
+    let s = dayHrs.length ? partSky(dayHrs, false) : cap(wmo(d.code).label.toLowerCase()) + ".";
+    let hiTxt = " High " + d.hi + deg;
+    if(i > 0){
+      const diff = d.hi - days[i - 1].hi, prev = i - 1 === 0 ? "today" : weekdayName(days[i - 1].date);
+      if(diff >= 8) hiTxt += ", much warmer than " + prev;
+      else if(diff >= 4) hiTxt += ", warmer than " + prev;
+      else if(diff <= -8) hiTxt += ", much colder than " + prev;
+      else if(diff <= -4) hiTxt += ", cooler than " + prev;
+    }
+    s += hiTxt + ".";
+    s += dayHrs.length ? partExtras(dayHrs, d) : partExtras([], d);
+    parts.push("<b>" + esc(dayName) + ":</b> " + s);
+  }
+  if(nightHrs.length >= 4){
+    const lo = Math.min(...nightHrs.map(h => h.temp));
+    const s = partSky(nightHrs, true) + " Low around " + lo + deg + "." +
+              partExtras(nightHrs, { pop: null, amt: null, code: d.code });
+    parts.push("<b>" + esc(nightName) + ":</b> " + s);
+  } else if(!parts.length){
+    parts.push("<b>" + esc(dayName) + ":</b> High " + d.hi + deg + ". Low " + d.lo + deg + ".");
+  }
+  return parts.join("<br><br>");
 }
 
 /* ---- national holidays (Nager.Date: free, no key, many countries) ----------
