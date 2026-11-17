@@ -16,6 +16,8 @@ const BR = window.NjordWidget || null;
 const L = ["s21","s41","s42","s52"].includes(NJ_Q.get("L")) ? NJ_Q.get("L") : "s42";
 const D = Math.max(1, Math.min(4, +NJ_Q.get("d") || 2));
 const HERE = NJ_Q.get("here") === "1";
+/* app build 30: Android lays its own live clock over the top centre when this is on */
+const CLOCK = NJ_Q.get("clock") !== "0";
 const T0 = Date.now(), MAX_WAIT = 28000;
 
 /* only the scene: no clock, cards, timeline, banners or rain on the glass */
@@ -163,6 +165,17 @@ function compose(){
   cv.width = Math.round(Wd*D); cv.height = Math.round(Hd*D);
   const c = cv.getContext("2d");
   c.drawImage(canvas, 0, 0, cv.width, cv.height);
+  /* app build 30: shade the sky behind the top text and the ground behind the
+     hours, so white text reads on a pale overcast sky too */
+  {
+    const W2 = cv.width, H2 = cv.height;
+    let g = c.createLinearGradient(0, 0, 0, H2*0.62);
+    g.addColorStop(0, "rgba(8,12,22,.55)"); g.addColorStop(0.55, "rgba(8,12,22,.28)"); g.addColorStop(1, "rgba(8,12,22,0)");
+    c.fillStyle = g; c.fillRect(0, 0, W2, H2*0.62);
+    g = c.createLinearGradient(0, H2*0.48, 0, H2);
+    g.addColorStop(0, "rgba(8,12,22,0)"); g.addColorStop(0.4, "rgba(8,12,22,.45)"); g.addColorStop(1, "rgba(8,12,22,.7)");
+    c.fillStyle = g; c.fillRect(0, H2*0.48, W2, H2*0.52);
+  }
   c.scale(D, D);
   const night = SCENE && SCENE.dayness < 0.35;
   const cond = SCENE && SCENE.cls ? SCENE.cls.label : "";
@@ -175,7 +188,7 @@ function compose(){
     c.font = (wt || 400) + " " + size + "px " + FT;
     c.textAlign = align || "left"; c.textBaseline = "alphabetic";
     c.fillStyle = "rgba(255,255,255," + (alpha == null ? 1 : alpha) + ")";
-    c.shadowColor = "rgba(0,0,0,.5)"; c.shadowBlur = 4; c.shadowOffsetY = 1;
+    c.shadowColor = "rgba(0,0,0,.75)"; c.shadowBlur = 6; c.shadowOffsetY = 1;
     c.fillText(s, x, y);
     c.restore();
     c.font = (wt || 400) + " " + size + "px " + FT;
@@ -192,21 +205,17 @@ function compose(){
     try { paintGlyph(c, code, cx, cy, s, nt); } catch(e){}
     c.restore();
   };
-  /* the refresh pill: arrow + time of this update; the app puts its tap target here */
-  const refreshPill = (x, yBase) => {
+  /* "Updated: 12:09p" and a refresh arrow; the app puts its tap target over it */
+  const updatedLine = (x, yBase, size) => {
     const t = (() => { const p = zonedParts(new Date(), PLACE.tz); return hm(p.hour*60 + p.minute); })();
-    c.font = "500 10px " + FT;
-    const w = c.measureText(t).width + 26, h = 15, y = yBase - 11.5;
-    c.save(); c.fillStyle = "rgba(0,0,0,.30)";
-    c.beginPath(); c.roundRect ? c.roundRect(x, y, w, h, 7.5) : c.rect(x, y, w, h); c.fill();
-    c.strokeStyle = "#fff"; c.lineWidth = 1.5; c.lineCap = "round";
-    const ax = x + 9, ay = y + h/2, r = 3.6;
-    c.beginPath(); c.arc(ax, ay, r, -0.2, Math.PI*1.55); c.stroke();
-    c.beginPath(); c.moveTo(ax + r + 0.4, ay - 4.2); c.lineTo(ax + r + 0.4, ay - 0.6); c.lineTo(ax + r - 3, ay - 0.6); c.stroke();
-    c.fillStyle = "#fff"; c.textBaseline = "middle"; c.fillText(t, x + 17, ay + 0.5);
+    const uw = txt("Updated: " + t, x, yBase, size, 400, "left", .85);
+    const cx = x + uw + 10, cy = yBase - 3.5, r = 3.6;
+    c.save(); c.strokeStyle = "rgba(255,255,255,.92)"; c.lineWidth = 1.4; c.lineCap = "round";
+    c.shadowColor = "rgba(0,0,0,.75)"; c.shadowBlur = 5;
+    c.beginPath(); c.arc(cx, cy, r, -0.2, Math.PI*1.55); c.stroke();
+    c.beginPath(); c.moveTo(cx + r + 0.4, cy - 4.2); c.lineTo(cx + r + 0.4, cy - 0.6); c.lineTo(cx + r - 3, cy - 0.6); c.stroke();
     c.restore();
-    pill = { x: x - 6, y: y - 8, w: w + 12, h: h + 16 };       // a little larger to tap
-    return w;
+    pill = { x: x - 4, y: yBase - 13, w: uw + 26, h: 20 };
   };
   const windArrow = (dir, x, y) => {
     if(dir == null) return 0;
@@ -239,28 +248,27 @@ function compose(){
     c.font = "600 15.5px " + FT;
     const rw = Math.max(c.measureText(hiLo).width, 90);
     const maxMid = Wd - P - rw - mx - 8;
-    const nm = fit(place, 12, 600, Math.max(30, maxMid - 64));
-    const nw = txt(nm, mx, cy - 3, 12, 600);
-    if(maxMid > nw + 50) refreshPill(mx + nw + 7, cy - 3);
-    txt(fit(cond, 12, 400, maxMid), mx, cy + 13, 12, 400, "left", .92);
+    txt(fit(place, 12, 600, Math.max(30, maxMid)), mx, cy - 9, 12, 600);
+    txt(fit(cond, 12, 400, maxMid), mx, cy + 5, 12, 400, "left", .92);
+    if(maxMid > 100) updatedLine(mx, cy + 19, 10);
     txt(hiLo, Wd - P, cy - 2, 15.5, 600, "right");
     rightWind(cy + 15, false);
   } else {
     const wide = Wd >= 360;   // 5x2 and a full-width 4x2 are about the same size on a phone
     /* top left: place, refresh, temperature, condition, alert */
-    const nm = fit(place + (HERE ? " \u00b7 My location" : ""), 12, 600, Wd*0.55 - 60);
-    const nw = txt(nm, P, 21, 12, 600);
-    refreshPill(P + nw + 7, 21);
+    const nm = fit(place + (HERE ? " \u00b7 My location" : ""), 12, 600, CLOCK ? Wd/2 - 52 - P : Wd*0.55 - 40);
+    txt(nm, P, 21, 12, 600);
     txt(WX.temp + "°", P - 1, 60, 40, 300);
     txt(fit(cond, 12, 400, Wd*0.5), P, 77, 12, 400, "left", .92);
+    updatedLine(P, 93, 10.5);
     const al = topAlert();
     if(al){
       c.font = "700 10.5px " + FT;
       const label = fit(al.txt + (al.more > 0 ? "  +" + al.more : ""), 10.5, 700, Wd*0.55);
       const w = c.measureText(label).width + 16;
       c.save(); c.fillStyle = al.col; c.beginPath();
-      c.roundRect ? c.roundRect(P, 83, w, 16, 8) : c.rect(P, 83, w, 16); c.fill();
-      c.fillStyle = "#fff"; c.textBaseline = "middle"; c.fillText(label, P + 8, 91.5); c.restore();
+      c.roundRect ? c.roundRect(P, 99, w, 16, 8) : c.rect(P, 99, w, 16); c.fill();
+      c.fillStyle = "#fff"; c.textBaseline = "middle"; c.fillText(label, P + 8, 107.5); c.restore();
     }
     /* top right: icon, high / low, wind */
     glyph(WX.code, Wd - P - 18, 24, 13, night);

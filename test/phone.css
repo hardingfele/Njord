@@ -304,3 +304,12 @@ html:not(.phone) #phMini { display: none; }
 .njDim { margin-top: 8px; font-size: 11px; line-height: 1.4; color: rgba(150,174,208,.7); }
 /* the widget's own page load: just the scene, nothing on top */
 html.widget body > *:not(#sky) { display: none !important; }
+
+/* app build 30: Places inside Settings */
+#set #phPlaces { font-size: 13px; }
+#set #phPlaces .chips { display: flex; flex-wrap: wrap; gap: 7px; }
+#set #phPlaces .chip { padding: 7px 11px; font-size: 13px; cursor: pointer; }
+#set #phPlaces .chip.home svg { margin-right: 1px; }
+#set #phPlaces .pbtn { margin-top: 8px; padding: 9px; font-size: 13px; }
+/* the wide (desktop / landscape) layout has no place chips */
+html:not(.phone) #phPlacesH, html:not(.phone) #phPlaces { display: none; }

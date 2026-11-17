@@ -51,12 +51,19 @@ ph.innerHTML =
     '<section class="pc" id="phSky" style="margin-top:12px"></section>' +
     '<section class="pc" id="phDays"><h3>10-day forecast <span class="tapHint">tap a day</span></h3><div class="days"></div></section>' +
     '<section class="pc" id="phAfd" hidden></section>' +
-    '<section class="pc" id="phPlaces"><h3>Places</h3><div class="chips"></div>' +
-      '<button class="pbtn" id="phSave"></button>' +
-      '<button class="pbtn" id="phLoc">Use my location</button>' +
-      '<div class="hintTxt">Swipe left or right on the sky to move between My location and your saved places.</div></section>' +
   '</div>';
 document.body.appendChild(ph);
+/* app build 30: Places lives at the top of Settings (it was the last card) */
+{
+  const box = document.createElement("div"); box.id = "phPlaces";
+  box.innerHTML = '<div class="chips"></div>' +
+    '<button class="pbtn" id="phSave"></button>' +
+    '<button class="pbtn" id="phLoc">Use my location</button>' +
+    '<div class="hintTxt">Swipe left or right on the sky to move between My location, home and your saved places.</div>';
+  const h4 = document.createElement("h4"); h4.textContent = "Places"; h4.id = "phPlacesH";
+  const set = document.getElementById("set");
+  if(set){ set.insertBefore(box, set.firstElementChild); set.insertBefore(h4, box); }
+}
 const alertSheet = document.createElement("div"); alertSheet.id = "phAlerts"; alertSheet.hidden = true;
 document.body.appendChild(alertSheet);
 const bar = document.createElement("div"); bar.id = "phBar";
@@ -113,6 +120,7 @@ function loadPlaces(){
   if(out.length !== j.length) savePlaces(out);
   return out;
 }
+function homeOf(){ try { const h = JSON.parse(STORE.get("weather.home") || "null"); return h && isFinite(h.lat) ? h : null; } catch(e){ return null; } }
 function savePlaces(list){ STORE.set(PKEY, JSON.stringify(list)); try { pushPrefs(); } catch(e){} }
 function goPlace(p){ if(!p) return; openDay = -1; setPlace(p); ph.scrollTo({ top: 0, behavior: "smooth" }); render(true); }
 
@@ -899,10 +907,14 @@ function renderPlaces(){
      (its x still removes it from the saved list) */
   const dup = h ? list.findIndex(p => sameTown(p, h)) : -1;
   const pin = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-6-5.6-6-10.5a6 6 0 0 1 12 0C18 15.4 12 21 12 21z"/><circle cx="12" cy="10.5" r="2.2"/></svg>';
+  /* app build 30: Home is a chip too (cleared from Settings > Open at, so no x) */
+  const hm = homeOf();
+  const house = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11.5L12 4l9 7.5"/><path d="M5.5 10v9.5h13V10"/></svg>';
   $("phPlaces").querySelector(".chips").innerHTML =
     '<span class="chip here' + (isHere(PLACE) ? " on" : "") + '" data-here="1">' + pin + 'My location' +
       (dup >= 0 ? ' <span class="hereName">&middot; ' + esc(placeName(list[dup])) + '</span><span class="x" data-x="' + dup + '">&times;</span>' : '') + '</span>' +
-    list.map((p, i) => i === dup ? '' : '<span class="chip' + (sameTown(p, PLACE) ? " on" : "") + '" data-i="' + i + '">' +
+    (hm ? '<span class="chip home' + (sameTown(hm, PLACE) && !isHere(PLACE) ? " on" : "") + '" data-home="1">' + house + esc(placeName(hm)) + '</span>' : '') +
+    list.map((p, i) => i === dup || (hm && sameTown(p, hm)) ? '' : '<span class="chip' + (sameTown(p, PLACE) ? " on" : "") + '" data-i="' + i + '">' +
                         esc(placeName(p)) + '<span class="x" data-x="' + i + '">&times;</span></span>').join("");
   const saved = list.some(p => sameTown(p, PLACE));
   const btn = $("phSave");
@@ -922,8 +934,12 @@ $("phPlaces").addEventListener("click", e => {
   const x = e.target.closest("[data-x]");
   if(x){ const list = loadPlaces(); list.splice(+x.dataset.x, 1); savePlaces(list); render(true); return; }
   const c = e.target.closest(".chip");
-  if(c && c.dataset.here){ goHere(); return; }
-  if(c) goPlace(loadPlaces()[+c.dataset.i]);
+  if(!c) return;
+  /* picking a place closes Settings so you see it */
+  setEl.hidden = true; gearEl.classList.remove("on");
+  if(c.dataset.here) goHere();
+  else if(c.dataset.home) goPlace(homeOf());
+  else goPlace(loadPlaces()[+c.dataset.i]);
 });
 $("phSave").addEventListener("click", () => {
   const list = loadPlaces();
@@ -961,7 +977,9 @@ top.addEventListener("touchend", e => {
   const t = e.changedTouches[0], dx = t.clientX - tx0, dy = t.clientY - ty0;
   if(Math.abs(dx) > 60 && Math.abs(dx) > 2*Math.abs(dy) && Date.now() - tt0 < 800){
     const h = here();
-    const list = (h ? [h] : []).concat(loadPlaces().filter(p => !h || !sameTown(p, h)));
+    const hm = homeOf(), list = h ? [h] : [];
+    if(hm && !list.some(p => sameTown(p, hm))) list.push(hm);
+    for(const p of loadPlaces()) if(!list.some(q => sameTown(q, p))) list.push(p);
     if(list.length < 1) return;
     let i = list.findIndex(p => samePlace(p, PLACE));
     i = i < 0 ? 0 : (i + (dx < 0 ? 1 : -1) + list.length) % list.length;
