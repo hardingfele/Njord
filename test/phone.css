@@ -313,3 +313,14 @@ html.widget body > *:not(#sky) { display: none !important; }
 #set #phPlaces .pbtn { margin-top: 8px; padding: 9px; font-size: 13px; }
 /* the wide (desktop / landscape) layout has no place chips */
 html:not(.phone) #phPlacesH, html:not(.phone) #phPlaces { display: none; }
+
+/* app build 32: Settings > Daily forecast */
+#sDaily { font-size: 12.5px; color: rgba(200,214,236,.85); }
+.njHint { color: rgba(150,174,208,.6); font-size: 11px; }
+.njTimes { display: flex; gap: 6px; }
+.njTime { flex: 1; position: relative; text-align: center; padding: 8px 4px; border-radius: 9px; border: 1px solid rgba(160,190,235,.16);
+          background: rgba(255,255,255,.04); cursor: pointer; }
+.njTime b { display: block; font-weight: 500; color: #e8eef8; font-size: 13px; }
+.njTime small { display: block; font-size: 10.5px; color: rgba(150,174,208,.75); margin-top: 2px; line-height: 1.25; }
+.njTime input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; }
+.njSel { margin-top: 7px; width: 100%; padding: 8px; border-radius: 9px; background: #121a26; color: #e8eef8; border: 1px solid rgba(160,190,235,.25); font: inherit; }

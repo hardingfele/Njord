@@ -209,13 +209,25 @@ function compose(){
   const updatedLine = (x, yBase, size) => {
     const t = (() => { const p = zonedParts(new Date(), PLACE.tz); return hm(p.hour*60 + p.minute); })();
     const uw = txt("Updated: " + t, x, yBase, size, 400, "left", .85);
-    const cx = x + uw + 10, cy = yBase - 3.5, r = 3.6;
-    c.save(); c.strokeStyle = "rgba(255,255,255,.92)"; c.lineWidth = 1.4; c.lineCap = "round";
+    /* a circular arrow: open at the top right, arrowhead pointing on round
+       (build 30's hooked line read as a "G") */
+    const cx = x + uw + 10, cy = yBase - 3.5, r = 4, a0 = -Math.PI*0.42, a1 = a0 + Math.PI*1.62;
+    c.save(); c.strokeStyle = c.fillStyle = "rgba(255,255,255,.92)"; c.lineWidth = 1.4; c.lineCap = "round";
     c.shadowColor = "rgba(0,0,0,.75)"; c.shadowBlur = 5;
-    c.beginPath(); c.arc(cx, cy, r, -0.2, Math.PI*1.55); c.stroke();
-    c.beginPath(); c.moveTo(cx + r + 0.4, cy - 4.2); c.lineTo(cx + r + 0.4, cy - 0.6); c.lineTo(cx + r - 3, cy - 0.6); c.stroke();
+    c.beginPath(); c.arc(cx, cy, r, a0, a1); c.stroke();
+    const ex = cx + r*Math.cos(a1), ey = cy + r*Math.sin(a1), tx = -Math.sin(a1), ty = Math.cos(a1), nx = Math.cos(a1), ny = Math.sin(a1);
+    c.beginPath(); c.moveTo(ex + tx*2.4, ey + ty*2.4);
+    c.lineTo(ex - tx*1.1 + nx*2.3, ey - ty*1.1 + ny*2.3); c.lineTo(ex - tx*1.1 - nx*2.3, ey - ty*1.1 - ny*2.3);
+    c.closePath(); c.fill();
     c.restore();
     pill = { x: x - 4, y: yBase - 13, w: uw + 26, h: 20 };
+  };
+  const pin = (cx, cy) => {
+    c.save(); c.fillStyle = "#fff"; c.shadowColor = "rgba(0,0,0,.75)"; c.shadowBlur = 5;
+    c.beginPath(); c.arc(cx, cy - 1.2, 3.8, Math.PI*0.8, Math.PI*2.2); c.lineTo(cx, cy + 5); c.closePath(); c.fill();
+    c.shadowBlur = 0; c.globalCompositeOperation = "destination-out";
+    c.beginPath(); c.arc(cx, cy - 1.3, 1.4, 0, Math.PI*2); c.fill();
+    c.restore();
   };
   const windArrow = (dir, x, y) => {
     if(dir == null) return 0;
@@ -256,19 +268,23 @@ function compose(){
   } else {
     const wide = Wd >= 360;   // 5x2 and a full-width 4x2 are about the same size on a phone
     /* top left: place, refresh, temperature, condition, alert */
-    const nm = fit(place + (HERE ? " \u00b7 My location" : ""), 12, 600, CLOCK ? Wd/2 - 52 - P : Wd*0.55 - 40);
-    txt(nm, P, 21, 12, 600);
+    /* My location: a small pin before the name (the app's My location chip uses
+       the same mark) instead of " · My location", which the clock cut off */
+    const px = HERE ? P + 11 : P;
+    if(HERE) pin(P + 4, 16.5);
+    const nm = fit(place, 12, 600, (CLOCK ? Wd/2 - 52 - P : Wd*0.55 - 40) - (px - P));
+    txt(nm, px, 21, 12, 600);
     txt(WX.temp + "°", P - 1, 60, 40, 300);
     txt(fit(cond, 12, 400, Wd*0.5), P, 77, 12, 400, "left", .92);
     updatedLine(P, 93, 10.5);
     const al = topAlert();
     if(al){
       c.font = "700 10.5px " + FT;
-      const label = fit(al.txt + (al.more > 0 ? "  +" + al.more : ""), 10.5, 700, Wd*0.55);
+      const label = fit(al.txt + (al.more > 0 ? "  +" + al.more : ""), 10.5, 700, Wd*0.45);
       const w = c.measureText(label).width + 16;
       c.save(); c.fillStyle = al.col; c.beginPath();
-      c.roundRect ? c.roundRect(P, 99, w, 16, 8) : c.rect(P, 99, w, 16); c.fill();
-      c.fillStyle = "#fff"; c.textBaseline = "middle"; c.fillText(label, P + 8, 107.5); c.restore();
+      const ax = Wd - P - w; c.roundRect ? c.roundRect(ax, 86, w, 16, 8) : c.rect(ax, 86, w, 16); c.fill();
+      c.fillStyle = "#fff"; c.textBaseline = "middle"; c.fillText(label, ax + 8, 94.5); c.restore();
     }
     /* top right: icon, high / low, wind */
     glyph(WX.code, Wd - P - 18, 24, 13, night);
@@ -291,16 +307,16 @@ function compose(){
     } catch(e){}
     /* the next hours, evenly across, just above the footer */
     const hrs = nextHours(Math.max(4, Math.min(7, Math.floor((Wd - 2*P)/50) + 1))), n = hrs.length;
-    const top = Math.max(102, fy - 70), span = Wd - 2*P;
+    const top = Math.max(100, fy - 86), span = Wd - 2*P;
     hrs.forEach((h, i) => {
       const x = P + (n > 1 ? span*i/(n - 1) : span/2);
       const al = i === 0 ? "left" : i === n - 1 ? "right" : "center";
-      const gx = al === "left" ? x + 9 : al === "right" ? x - 9 : x;
-      txt(h.lab, gx, top + 10, 10.5, 400, "center", .95);
-      glyph(h.code, gx, top + 21, 6.8, h.night);
-      txt(h.temp + "°", gx, top + 39, 10.5, 600, "center");
-      if(h.pop) { c.save(); c.font = "400 9.5px " + FT; c.fillStyle = "#9fd0ff"; c.textAlign = "center";
-                  c.shadowColor = "rgba(0,0,0,.5)"; c.shadowBlur = 3; c.fillText(h.pop, gx, top + 50); c.restore(); }
+      const gx = al === "left" ? x + 12 : al === "right" ? x - 12 : x;
+      txt(h.lab, gx, top + 12, 12.5, 400, "center", .95);
+      glyph(h.code, gx, top + 30, 9.2, h.night);
+      txt(h.temp + "°", gx, top + 56, 13.5, 600, "center");
+      if(h.pop) { c.save(); c.font = "500 11px " + FT; c.fillStyle = "#9fd0ff"; c.textAlign = "center";
+                  c.shadowColor = "rgba(0,0,0,.5)"; c.shadowBlur = 3; c.fillText(h.pop, gx, top + 70); c.restore(); }
     });
   }
   let png = "";

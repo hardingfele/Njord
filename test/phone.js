@@ -1101,6 +1101,7 @@ function syncHomeUI(){
     clr.style.display = "";
   }
   syncAlertsUI();
+  syncDailyUI();
 }
 try { window.syncSettings = function(){ syncSettingsWide.apply(this, arguments); syncHomeUI(); pushPrefs(); }; } catch(e){}
 setTimeout(syncHomeUI, 0);
@@ -1151,7 +1152,8 @@ function pushPrefs(){
     NA.setPrefs(JSON.stringify({
       units: unitsKey(), clock24: !!CONFIG.clock24, openAt: openAt(),
       home: strip(homePlace()), here: strip(here()), places: loadPlaces().map(strip),
-      alerts: { on: ap.on, mode: ap.mode, places: cand.filter(p => keys.includes(pkey(p)) && usOK(p)).map(strip) }
+      alerts: { on: ap.on, mode: ap.mode, places: cand.filter(p => keys.includes(pkey(p)) && usOK(p)).map(strip) },
+      daily: (() => { const dp = dailyPrefs(); return { on: dp.on, n: dp.n, times: dp.times.slice(0, dp.n), src: dp.src, place: strip(dp.place), buzz: dp.buzz }; })()
     }));
   } catch(e){}
 }
@@ -1209,7 +1211,7 @@ function syncAlertsUI(){
     'Checked about every 15 minutes; Android may delay checks while the phone sleeps. Not a substitute for Wireless Emergency Alerts.</div>';
 }
 /* the app tells the page when a permission answer comes back */
-window.njordPerm = function(){ try { syncAlertsUI(); } catch(e){} };
+window.njordPerm = function(){ try { syncAlertsUI(); syncDailyUI(); } catch(e){} };
 /* a tap on the widget or an alert while the app is already open */
 window.njordGoto = function(json, alerts){
   let p = null; try { p = typeof json === "string" ? JSON.parse(json) : json; } catch(e){}
@@ -1228,6 +1230,127 @@ function showAlertsSoon(){
 }
 if(NJ_GOTO && NJ_Q.get("alerts") === "1") showAlertsSoon();
 setTimeout(pushPrefs, 1500);
+/* ---- Daily forecast notifications - Android app, build 32 ------------------
+   1-4 a day at chosen times. The app schedules them; at each time it loads
+   this page off-screen with ?brief=1 and takes the written forecast below
+   (the same text as the 10-day drop-downs). Morning: today. Midday: the rest
+   of today and tonight. Evening: tonight and tomorrow. */
+const DKEY = "njord.daily";
+const DAILY_DEF = { 1: ["07:00"], 2: ["07:00", "20:30"], 3: ["07:00", "12:00", "20:30"], 4: ["07:00", "12:00", "17:00", "21:00"] };
+function dailyPrefs(){
+  let j = null; try { j = JSON.parse(STORE.get(DKEY) || "null"); } catch(e){}
+  if(!j || typeof j !== "object") j = {};
+  const n = [1,2,3,4].includes(+j.n) ? +j.n : 2;
+  const times = Array.isArray(j.times) ? j.times.slice(0, 4) : [];
+  for(let i = 0; i < 4; i++) if(!/^\d{2}:\d{2}$/.test(times[i] || "")) times[i] = (DAILY_DEF[4][i]);
+  if(!Array.isArray(j.times)) DAILY_DEF[n].forEach((t, i) => times[i] = t);
+  return { on: !!j.on, n, times, src: ["here","home","place"].includes(j.src) ? j.src : "here",
+           place: j.place && isFinite(j.place.lat) ? j.place : null, buzz: j.buzz === "silent" ? "silent" : "vibrate" };
+}
+function saveDaily(dp){ STORE.set(DKEY, JSON.stringify(dp)); pushPrefs(); }
+function fmtHM(t){
+  const m = /^(\d{2}):(\d{2})$/.exec(t || ""); if(!m) return t;
+  return fmtTime(+m[1]*60 + +m[2]);
+}
+function syncDailyUI(){
+  if(!NA || !setEl) return;
+  let box = $("sDaily");
+  if(!box){
+    const before = [...setEl.querySelectorAll("h4")].find(h => /^weather alerts/i.test(h.textContent.trim())) ||
+                   [...setEl.querySelectorAll("h4")].find(h => /^show$/i.test(h.textContent.trim()));
+    if(!before) return;
+    const h4 = document.createElement("h4"); h4.textContent = "Daily forecast";
+    box = document.createElement("div"); box.id = "sDaily";
+    before.parentNode.insertBefore(h4, before); before.parentNode.insertBefore(box, before);
+    box.addEventListener("mousedown", e => { if(!e.target.closest("input,select")) e.preventDefault(); });
+    box.addEventListener("change", e => {
+      const dp = dailyPrefs();
+      const ti = e.target.closest("input[data-t]");
+      if(ti && /^\d{2}:\d{2}$/.test(ti.value)){ dp.times[+ti.dataset.t] = ti.value; saveDaily(dp); syncDailyUI(); }
+      const sel = e.target.closest("select");
+      if(sel){ const list = loadPlaces(); dp.place = list[+sel.value] || null; saveDaily(dp); }
+    });
+    box.addEventListener("click", e => {
+      const dp = dailyPrefs();
+      if(e.target.closest("#bDaily")){
+        dp.on = !dp.on; saveDaily(dp);
+        try { NA.enableDaily(dp.on, dp.src === "here"); } catch(err){}
+      } else if(e.target.closest("[data-dn]")){
+        const n = +e.target.closest("[data-dn]").dataset.dn;
+        if(n !== dp.n){ dp.n = n; DAILY_DEF[n].forEach((t, i) => dp.times[i] = t); saveDaily(dp); }
+      } else if(e.target.closest("[data-ds]")){
+        dp.src = e.target.closest("[data-ds]").dataset.ds;
+        if(dp.src === "place" && !dp.place) dp.place = loadPlaces()[0] || null;
+        saveDaily(dp);
+        if(dp.on && dp.src === "here") try { NA.enableDaily(true, true); } catch(err){}
+      } else if(e.target.closest("[data-db]")){
+        dp.buzz = e.target.closest("[data-db]").dataset.db; saveDaily(dp);
+      } else if(e.target.closest("[data-fix]")){
+        const f = e.target.closest("[data-fix]").dataset.fix;
+        try { if(f === "notify") NA.enableDaily(true, false); else NA.requestBackgroundLocation(); } catch(err){}
+      } else return;
+      syncDailyUI(); showUI();
+    });
+  }
+  const dp = dailyPrefs(), ps = permState() || {};
+  const what = t => { const h = +t.slice(0, 2); return h < 11 ? "Today" : h < 16 ? "Rest of today + tonight" : "Tonight + tomorrow"; };
+  const places = loadPlaces();
+  const warn = [];
+  if(dp.on && ps.notify === false) warn.push('Notifications are turned off for Njord Weather. <button data-fix="notify">Allow</button>');
+  if(dp.on && dp.src === "here" && ps.bgLocation === false)
+    warn.push('My location needs location access set to <b>Allow all the time</b>; until then it uses the last place the app found. <button data-fix="bg">Open settings</button>');
+  box.innerHTML =
+    '<div class="njRow"><div>Forecast notifications</div><button id="bDaily" class="njTog' + (dp.on ? " on" : "") + '" aria-label="Daily forecast notifications"></button></div>' +
+    (dp.on ?
+      '<div class="njLbl">How many a day</div><div class="seg">' + [1,2,3,4].map(n => '<button data-dn="' + n + '"' + (n === dp.n ? ' class="on"' : "") + '>' + n + '</button>').join("") + '</div>' +
+      '<div class="njLbl">Times <span class="njHint">(tap to change)</span></div><div class="njTimes">' +
+        dp.times.slice(0, dp.n).map((t, i) => '<label class="njTime"><input type="time" data-t="' + i + '" value="' + t + '"><b>' + esc(fmtHM(t)) + '</b><small>' + what(t) + '</small></label>').join("") + '</div>' +
+      '<div class="njLbl">For</div><div class="seg">' +
+        [["here","My location"],["home","Home"],["place","A saved place"]].map(([k, l]) => '<button data-ds="' + k + '"' + (dp.src === k ? ' class="on"' : "") + '>' + l + '</button>').join("") + '</div>' +
+      (dp.src === "place" ? (places.length ? '<select class="njSel">' + places.map((p, i) => '<option value="' + i + '"' + (dp.place && sameTown(p, dp.place) ? " selected" : "") + '>' + esc(placeName(p)) + '</option>').join("") + '</select>'
+                                            : '<div class="njDim">No saved places yet.</div>') : "") +
+      '<div class="njLbl">Alert</div><div class="seg"><button data-db="silent"' + (dp.buzz === "silent" ? ' class="on"' : "") + '>Silent</button>' +
+        '<button data-db="vibrate"' + (dp.buzz === "vibrate" ? ' class="on"' : "") + '>Vibrate</button></div>' +
+      warn.map(w => '<div class="njWarn">' + w + '</div>').join("") : "") +
+    '<div class="njDim">The title is the temperature and sky at that moment; the text is the written forecast. ' +
+    'Android may deliver them a few minutes late while the phone sleeps. Weather alerts are separate.</div>';
+}
+/* the forecast text for a notification (?brief=1, loaded by the app) */
+function briefParts(i){
+  const out = {};
+  const plain = h => { const d = document.createElement("div"); d.innerHTML = h; return (d.textContent || "").trim(); };
+  for(const seg of String(dayText(i) || "").split("<br><br>")){
+    const m = /^<b>([\s\S]*?):<\/b>\s*([\s\S]*)$/.exec(seg.trim());
+    if(m) out[plain(m[1])] = plain(m[2]);
+  }
+  return out;
+}
+function briefOut(){
+  const p = zonedParts(new Date(), PLACE.tz);
+  const win = NJ_Q.get("win") || (p.hour < 11 ? "morning" : p.hour < 16 ? "midday" : "evening");
+  const p0 = briefParts(0), p1 = WX.days[1] ? briefParts(1) : {}, tom = WX.days[1] ? weekdayName(WX.days[1].date) : "";
+  let lines;
+  if(win === "morning") lines = [["Today", p0.Today]];
+  else if(win === "midday") lines = [["Today", p0.Today], ["Tonight", p0.Tonight]];
+  else lines = [["Tonight", p0.Tonight], [tom, p1[tom]]];
+  lines = lines.filter(l => l[1]);
+  if(!lines.length){ const k = Object.keys(p0)[0]; if(k) lines = [[k, p0[k]]]; }
+  const label = SCENE && SCENE.cls ? SCENE.cls.label : "";
+  return { ok: true, win, title: WX.temp + "°" + (label ? " · " + label : ""), lines,
+           place: { name: PLACE.name, short: PLACE.short, lat: PLACE.lat, lng: PLACE.lng, tz: PLACE.tz, cc: PLACE.cc } };
+}
+if(NJ_Q.get("brief") === "1"){
+  const t0 = Date.now();
+  const iv = setInterval(() => {
+    const age = Date.now() - t0, BR = window.NjordWidget;
+    if(!(WX_LIVE && WX && SCENE && SCENE.cls) && age < 30000) return;
+    clearInterval(iv);
+    if(!BR) return;
+    if(!WX){ BR.done(JSON.stringify({ ok: false, why: WX_STATE })); return; }
+    try { BR.done(JSON.stringify(briefOut())); } catch(e){ BR.done(JSON.stringify({ ok: false, why: String(e && e.message) })); }
+  }, 300);
+}
+
 
 render(true);
 setInterval(() => render(false), 1000);
