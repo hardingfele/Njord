@@ -2,8 +2,8 @@
    Network first for the app's own files (so updates arrive on the next open),
    falling back to the last copy saved here. Weather data is not touched -
    the page keeps its own saved forecast. */
-const CACHE = "njord-shell-v1";
-const SHELL = ["./", "./index.html", "./phone.js", "./phone.css", "./manifest.webmanifest",
+const CACHE = "njord-shell-v2";
+const SHELL = ["./", "./index.html", "./phone.js", "./phone.css", "./widget.js", "./manifest.webmanifest",
                "./icon-192.png", "./icon-512.png", "./apple-touch-icon.png"];
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));

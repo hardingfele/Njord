@@ -5,6 +5,8 @@
    the scene itself is drawn. */
 (function(){
 "use strict";
+/* the home-screen widget loads the page only to paint the scene (widget.js) */
+if(typeof NJ_WIDGET !== "undefined" && NJ_WIDGET) return;
 const root = document.documentElement;
 const ANDROID_APP = /androidplatform\.net$/.test(location.hostname);
 /* web app opened from the home screen (iPhone or Android) counts as the app */
@@ -52,7 +54,6 @@ ph.innerHTML =
     '<section class="pc" id="phPlaces"><h3>Places</h3><div class="chips"></div>' +
       '<button class="pbtn" id="phSave"></button>' +
       '<button class="pbtn" id="phLoc">Use my location</button>' +
-      '<div class="openAt" id="phOpenAt"></div>' +
       '<div class="hintTxt">Swipe left or right on the sky to move between My location and your saved places.</div></section>' +
   '</div>';
 document.body.appendChild(ph);
@@ -112,7 +113,7 @@ function loadPlaces(){
   if(out.length !== j.length) savePlaces(out);
   return out;
 }
-function savePlaces(list){ STORE.set(PKEY, JSON.stringify(list)); }
+function savePlaces(list){ STORE.set(PKEY, JSON.stringify(list)); try { pushPrefs(); } catch(e){} }
 function goPlace(p){ if(!p) return; openDay = -1; setPlace(p); ph.scrollTo({ top: 0, behavior: "smooth" }); render(true); }
 
 /* ---- render ----------------------------------------------------------------
@@ -603,11 +604,11 @@ function windWords(list, d){
   const ws = list.map(h => h.wind).filter(v => v != null);
   const hi = d.wind != null ? d.wind : (ws.length ? Math.max(...ws) : null);
   if(hi == null) return "";
-  if(hi < 4) return " Light winds.";
+  if(windMPH(hi) < (CONFIG.units === "imperial" || windMS() ? 4 : 2.5)) return " Light winds.";
   const lo = ws.length ? Math.min(...ws) : hi;
   const dir = d.dir != null ? d.dir : (list.find(h => h.dir != null) || {}).dir;
   const from = dir != null ? cap(compassWords(dir)) + " wind " : "Wind ";
-  const range = hi - lo <= 3 ? "around " + hi : lo + " to " + hi;
+  const range = hi - lo <= (windMS() ? 1 : 3) ? "around " + hi : lo + " to " + hi;
   const gust = isGusty(hi, d.gust) ? ", with gusts up to " + d.gust + " " + spdUnit() : "";
   return " " + from + range + " " + spdUnit() + gust + ".";
 }
@@ -903,12 +904,6 @@ function renderPlaces(){
       (dup >= 0 ? ' <span class="hereName">&middot; ' + esc(placeName(list[dup])) + '</span><span class="x" data-x="' + dup + '">&times;</span>' : '') + '</span>' +
     list.map((p, i) => i === dup ? '' : '<span class="chip' + (sameTown(p, PLACE) ? " on" : "") + '" data-i="' + i + '">' +
                         esc(placeName(p)) + '<span class="x" data-x="' + i + '">&times;</span></span>').join("");
-  let home = null;
-  try { home = JSON.parse(STORE.get("weather.home") || "null"); } catch(e){}
-  $("phOpenAt").innerHTML = home
-    ? 'Opens at home: <b>' + esc(placeName(home)) + '</b><button class="linkBtn" id="phClearHome">Open at my location instead</button>'
-    : 'Opens at your current location. To always open somewhere else, pick it and choose <b>Make current place home</b> in settings.';
-  const ch = $("phClearHome"); if(ch) ch.addEventListener("click", clearHome);
   const saved = list.some(p => sameTown(p, PLACE));
   const btn = $("phSave");
   btn.textContent = saved ? "Saved ✓" : "Save " + placeName(PLACE);
@@ -999,6 +994,13 @@ window.njordBack = function(){
    which on a VPN lands in the wrong city - and a failed or refused lookup
    simply leaves the last place showing. */
 const hasHome = () => !!STORE.get("weather.home");
+/* app build 29: Settings > Open at - My location, Home or Last viewed. Before
+   this the rule was "home if one is set, otherwise My location", which is
+   still the answer until the switch is touched. Home with no home set falls
+   back to My location. */
+const OKEY = "njord.openAt";
+const openAt = () => njOpenAt() || (hasHome() ? "home" : "here");
+const effOpenAt = () => { const v = openAt(); return v === "home" && !hasHome() ? "here" : v; };
 /* "My location": the last place the phone's own location resolved to, kept so
    swiping or tapping can always bring you back to it */
 const HKEY = "njord.here";
@@ -1023,7 +1025,7 @@ function locateHere(manual){
   lastLocate = Date.now();
   navigator.geolocation.getCurrentPosition(pos => {
     const lat = pos.coords.latitude, lng = pos.coords.longitude;
-    if(hasHome() && !manual) return;
+    if((effOpenAt() !== "here" || NJ_GOTO) && !manual) return;
     /* only move if we are still on (or heading to) "My location" */
     if(manual && !isHere(PLACE) && here()) return;
     if(kmBetween(lat, lng, PLACE.lat, PLACE.lng) < 2){             // already here: remember it as My location
@@ -1036,9 +1038,9 @@ function locateHere(manual){
       .then(() => render(true));
   }, () => {}, { enableHighAccuracy: false, timeout: 10000, maximumAge: 5*60000 });
 }
-if(APP && !hasHome()) setTimeout(locateHere, 300);
+if(APP && effOpenAt() === "here" && !NJ_GOTO) setTimeout(locateHere, 300);
 document.addEventListener("visibilitychange", () => {
-  if(!document.hidden && APP && !hasHome() && Date.now() - lastLocate > 30*60000) locateHere();
+  if(!document.hidden && APP && effOpenAt() === "here" && Date.now() - lastLocate > 30*60000) locateHere();
 });
 /* Settings: in the app, "Home" means only a home you chose. Without one the
    panel says so (the wallpaper's built-in default home is not shown), and
@@ -1054,19 +1056,35 @@ function syncHomeUI(){
     clr.addEventListener("click", () => { clearHome(); showUI(); });
     $("sHomeSet").parentNode.appendChild(clr);
   }
+  let oa = $("sOpenAt");
+  if(!oa && txt){
+    oa = document.createElement("div"); oa.className = "seg"; oa.id = "sOpenAt"; oa.style.marginBottom = "8px";
+    oa.innerHTML = '<button data-oa="here">My location</button><button data-oa="home">Home</button><button data-oa="last">Last viewed</button>';
+    oa.addEventListener("mousedown", e => e.preventDefault());
+    oa.addEventListener("click", e => {
+      const b = e.target.closest("[data-oa]"); if(!b) return;
+      STORE.set(OKEY, b.dataset.oa); syncHomeUI(); pushPrefs(); showUI();
+    });
+    txt.parentNode.insertBefore(oa, txt);
+    const h4 = oa.previousElementSibling;
+    if(h4 && h4.tagName === "H4") h4.textContent = "Open at";
+  }
+  if(oa) oa.querySelectorAll("[data-oa]").forEach(b => b.classList.toggle("on", b.dataset.oa === openAt()));
   let home = null;
   try { home = JSON.parse(STORE.get("weather.home") || "null"); } catch(e){}
   if(!home){
-    if(txt) txt.textContent = "Home: not set \u2014 the app opens at your current location";
+    if(txt) txt.textContent = "Home: not set" + (openAt() === "home" ? " \u2014 opens at My location until you set one" : "") +
+                              ". To set it, show a place and choose Make current place home.";
     if(go) go.style.display = "none";
     clr.style.display = "none";
   } else {
-    if(txt) txt.textContent = "Home: " + placeName(home) + (samePlace(home, PLACE) ? "  (showing now)" : "") + " \u2014 the app opens here";
+    if(txt) txt.textContent = "Home: " + placeName(home) + (samePlace(home, PLACE) ? "  (showing now)" : "");
     if(go) go.style.display = "";
     clr.style.display = "";
   }
+  syncAlertsUI();
 }
-try { window.syncSettings = function(){ syncSettingsWide.apply(this, arguments); syncHomeUI(); }; } catch(e){}
+try { window.syncSettings = function(){ syncSettingsWide.apply(this, arguments); syncHomeUI(); pushPrefs(); }; } catch(e){}
 setTimeout(syncHomeUI, 0);
 function clearHome(){
   try { window.localStorage.removeItem("weather.home"); } catch(e){}
@@ -1076,6 +1094,122 @@ function clearHome(){
   render(true);
   locateHere();
 }
+
+/* ---- Weather alerts (US) as notifications - Android app, build 29 ----------
+   The settings live here; the checking is done by the app itself (a
+   background job every ~15 minutes asks api.weather.gov), so it works with
+   the app closed. "Alerts for": My location only, My location + selected
+   places, or selected places only. Warnings and watches notify, and so do
+   their updates and cancellations; advisories stay in the app. */
+const NA = window.NjordAndroid || null;
+const AKEY = "njord.alerts";
+const pkey = p => (+p.lat).toFixed(3) + "," + (+p.lng).toFixed(3);
+function alertPrefs(){
+  let j = null; try { j = JSON.parse(STORE.get(AKEY) || "null"); } catch(e){}
+  if(!j || typeof j !== "object") j = {};
+  return { on: !!j.on, mode: ["here","both","places"].includes(j.mode) ? j.mode : "both", sel: Array.isArray(j.sel) ? j.sel : null };
+}
+function homePlace(){ try { const h = JSON.parse(STORE.get("weather.home") || "null"); return h && isFinite(h.lat) ? h : null; } catch(e){ return null; } }
+/* home first, then the saved places, one row per town */
+function alertCandidates(){
+  const out = [], h = homePlace();
+  if(h) out.push(Object.assign({}, h, { isHome: true }));
+  for(const p of loadPlaces()) if(!out.some(q => sameTown(q, p))) out.push(p);
+  return out;
+}
+const usOK = p => !p.cc || String(p.cc).toUpperCase() === "US";
+function selectedKeys(ap){
+  /* first time: home and every saved US place */
+  return ap.sel || alertCandidates().filter(usOK).map(pkey);
+}
+function saveAlertPrefs(ap){ STORE.set(AKEY, JSON.stringify(ap)); pushPrefs(); }
+function permState(){ try { return NA && NA.permState ? JSON.parse(NA.permState()) : null; } catch(e){ return null; } }
+/* everything the widget and the alert checker need, handed to the app */
+function pushPrefs(){
+  if(!NA || !NA.setPrefs) return;
+  const ap = alertPrefs(), keys = selectedKeys(ap), cand = alertCandidates();
+  const strip = p => p && ({ name: p.name, short: p.short || p.name, lat: +p.lat, lng: +p.lng, tz: p.tz || null, cc: p.cc || null });
+  try {
+    NA.setPrefs(JSON.stringify({
+      units: unitsKey(), clock24: !!CONFIG.clock24, openAt: openAt(),
+      home: strip(homePlace()), here: strip(here()), places: loadPlaces().map(strip),
+      alerts: { on: ap.on, mode: ap.mode, places: cand.filter(p => keys.includes(pkey(p)) && usOK(p)).map(strip) }
+    }));
+  } catch(e){}
+}
+function syncAlertsUI(){
+  if(!NA || !setEl) return;
+  let box = $("sAlerts");
+  if(!box){
+    const show = [...setEl.querySelectorAll("h4")].find(h => /^show$/i.test(h.textContent.trim()));
+    if(!show) return;
+    const h4 = document.createElement("h4"); h4.textContent = "Weather alerts (US)";
+    box = document.createElement("div"); box.id = "sAlerts";
+    show.parentNode.insertBefore(h4, show); show.parentNode.insertBefore(box, show);
+    box.addEventListener("mousedown", e => { if(!e.target.closest("input")) e.preventDefault(); });
+    box.addEventListener("click", e => {
+      const ap = alertPrefs();
+      if(e.target.closest("#bAlerts")){
+        ap.on = !ap.on; if(!ap.sel) ap.sel = selectedKeys(ap);
+        saveAlertPrefs(ap);
+        try { NA.enableAlerts(ap.on, ap.mode !== "places"); } catch(err){}
+      } else if(e.target.closest("[data-am]")){
+        ap.mode = e.target.closest("[data-am]").dataset.am; if(!ap.sel) ap.sel = selectedKeys(ap);
+        saveAlertPrefs(ap);
+        if(ap.on && ap.mode !== "places") try { NA.enableAlerts(true, true); } catch(err){}
+      } else if(e.target.closest("[data-ak]")){
+        const k = e.target.closest("[data-ak]").dataset.ak, sel = selectedKeys(ap);
+        ap.sel = sel.includes(k) ? sel.filter(x => x !== k) : sel.concat([k]);
+        saveAlertPrefs(ap);
+      } else if(e.target.closest("[data-fix]")){
+        const f = e.target.closest("[data-fix]").dataset.fix;
+        try { if(f === "notify") NA.enableAlerts(true, false); else if(f === "bg") NA.requestBackgroundLocation(); else NA.openAppSettings(); } catch(err){}
+      } else return;
+      syncAlertsUI(); showUI();
+    });
+  }
+  const ap = alertPrefs(), keys = selectedKeys(ap), ps = permState() || {};
+  const rows = alertCandidates().map(p => {
+    const ok = usOK(p), on = ok && keys.includes(pkey(p));
+    return '<div class="njChk' + (ok ? "" : " off") + '"' + (ok ? ' data-ak="' + esc(pkey(p)) + '"' : "") + '><i' + (on ? ' class="on"' : "") + '>' +
+      (on ? "&#10003;" : "") + '</i><span>' + esc(placeName(p)) + '</span><small>' + (p.isHome ? "Home" : ok ? "" : "No US alerts") + '</small></div>';
+  }).join("") || '<div class="njDim">Save places (Places card, Save) to choose them here.</div>';
+  const warn = [];
+  if(ap.on && ps.notify === false) warn.push('Notifications are turned off for Njord Weather. <button data-fix="notify">Allow</button>');
+  if(ap.on && ap.mode !== "places" && ps.bgLocation === false)
+    warn.push('My location needs location access set to <b>Allow all the time</b>. <button data-fix="bg">Open settings</button>');
+  box.innerHTML =
+    '<div class="njRow"><div>Notifications</div><button id="bAlerts" class="njTog' + (ap.on ? " on" : "") + '" aria-label="Weather alert notifications"></button></div>' +
+    (ap.on ?
+      '<div class="njLbl">Alerts for</div>' +
+      '<div class="seg njWrap"><button data-am="here"' + (ap.mode === "here" ? ' class="on"' : "") + '>My location only</button>' +
+      '<button data-am="both"' + (ap.mode === "both" ? ' class="on"' : "") + '>My location + selected places</button>' +
+      '<button data-am="places"' + (ap.mode === "places" ? ' class="on"' : "") + '>Selected places only</button></div>' +
+      (ap.mode !== "here" ? '<div class="njLbl">Selected places</div>' + rows : "") +
+      warn.map(w => '<div class="njWarn">' + w + '</div>').join("") : "") +
+    '<div class="njDim">Warnings and watches notify, and so do their updates and cancellations; advisories show in the app only. ' +
+    'Checked about every 15 minutes; Android may delay checks while the phone sleeps. Not a substitute for Wireless Emergency Alerts.</div>';
+}
+/* the app tells the page when a permission answer comes back */
+window.njordPerm = function(){ try { syncAlertsUI(); } catch(e){} };
+/* a tap on the widget or an alert while the app is already open */
+window.njordGoto = function(json, alerts){
+  let p = null; try { p = typeof json === "string" ? JSON.parse(json) : json; } catch(e){}
+  if(!p || !isFinite(p.lat) || !isFinite(p.lng)) return;
+  if(!setEl.hidden){ setEl.hidden = true; gearEl.classList.remove("on"); }
+  if(!alertSheet.hidden) closeAlerts();
+  if(!samePlace(p, PLACE)) goPlace(p); else ph.scrollTo({ top: 0, behavior: "smooth" });
+  if(alerts) showAlertsSoon();
+};
+function showAlertsSoon(){
+  const t0 = Date.now();
+  const iv = setInterval(() => {
+    if(ALERTS.length){ clearInterval(iv); openAlerts(); }
+    else if(Date.now() - t0 > 15000) clearInterval(iv);
+  }, 400);
+}
+if(NJ_GOTO && NJ_Q.get("alerts") === "1") showAlertsSoon();
+setTimeout(pushPrefs, 1500);
 
 render(true);
 setInterval(() => render(false), 1000);
