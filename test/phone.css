@@ -324,3 +324,31 @@ html:not(.phone) #phPlacesH, html:not(.phone) #phPlaces { display: none; }
 .njTime small { display: block; font-size: 10.5px; color: rgba(150,174,208,.75); margin-top: 2px; line-height: 1.25; }
 .njTime input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; }
 .njSel { margin-top: 7px; width: 100%; padding: 8px; border-radius: 9px; background: #121a26; color: #e8eef8; border: 1px solid rgba(160,190,235,.25); font: inherit; }
+
+/* ---- Njord Free (app build 37) ---- */
+.njLock { display: inline-block; margin-right: 4px; vertical-align: -1px; }
+.seg button.locked { opacity: .5; }
+.pbtn.locked { opacity: .75; border-style: dashed; }
+.njFreeNote { font-size: 11.5px; color: rgba(150,174,208,.85); margin: 7px 2px 2px; }
+.njFreeNote b { color: #78e0f2; font-weight: 600; cursor: pointer; }
+#njUp, #njIntl { position: fixed; inset: 0; z-index: 9000; }
+#njUp[hidden], #njIntl[hidden] { display: none; }
+.upDim { position: absolute; inset: 0; background: rgba(0,0,0,.45); }
+.upSheet { position: absolute; left: 0; right: 0; bottom: 0; background: #0f1a2e; border-radius: 18px 18px 0 0;
+  padding: 18px 20px calc(22px + env(safe-area-inset-bottom)); box-shadow: 0 -10px 40px rgba(0,0,0,.6); color: #e8eef8; }
+.upSheet h2, .intlCard h2 { margin: 0 0 4px; font: 600 19px/1.25 Figtree, system-ui, sans-serif; }
+.upSub { color: #9fb2cf; font-size: 13px; margin-bottom: 8px; }
+.upList { margin: 0 0 14px; padding: 0; list-style: none; }
+.upList li { padding: 7px 0; border-bottom: 1px solid rgba(160,190,235,.1); font-size: 14px; color: #e8eef8; }
+.upList li:before { content: "\2713"; color: #78e0f2; margin-right: 10px; font-weight: 700; }
+.upGo { display: block; width: 100%; padding: 13px; border-radius: 12px; border: 0; background: #c8463c; color: #fff;
+  font: 600 15px Figtree, system-ui, sans-serif; cursor: pointer; }
+.upLater { display: block; width: 100%; padding: 11px; border: 0; background: none; color: #9fb2cf;
+  font: 400 14px Figtree, system-ui, sans-serif; margin-top: 4px; cursor: pointer; }
+.upSoon { text-align: center; color: #ffd36a; font-size: 12.5px; margin-top: 8px; }
+#sGetNjord .upList li { font-size: 13px; padding: 6px 0; }
+#sGetNjord .upGo { padding: 11px; font-size: 14px; }
+.intlCard { position: absolute; left: 16px; right: 16px; top: 34%; background: rgba(15,26,46,.96); border-radius: 16px;
+  padding: 20px; color: #e8eef8; text-align: center; box-shadow: 0 10px 40px rgba(0,0,0,.5); }
+.intlCard p { color: #9fb2cf; font-size: 13.5px; margin: 6px 0 14px; line-height: 1.4; }
+.intlCard .upGo { width: auto; display: inline-block; padding: 12px 26px; }

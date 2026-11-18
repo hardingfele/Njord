@@ -17,6 +17,13 @@ const APP = ANDROID_APP || STANDALONE || /[?&]app=1\b/.test(location.search);
 if(!ANDROID_APP && location.protocol === "https:" && "serviceWorker" in navigator)
   navigator.serviceWorker.register("sw.js").catch(() => {});
 root.classList.toggle("app", APP);
+/* app build 37: Njord Free (the free app). The app says so through the
+   bridge; ?free=1 shows the same limits in a browser for testing. */
+const FREE = (() => { try { return !!(window.NjordAndroid && window.NjordAndroid.isFree && window.NjordAndroid.isFree()); } catch(e){ return false; } })()
+  || /[?&]free=1\b/.test(location.search);
+root.classList.toggle("njFree", FREE);
+const FREE_PLACES = 2;
+const LOCK_SVG = '<svg class="njLock" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>';
 const isPhone = () => window.innerWidth < 720 && window.innerHeight > window.innerWidth;
 function applyMode(){ root.classList.toggle("phone", isPhone()); }
 applyMode();
@@ -58,6 +65,7 @@ document.body.appendChild(ph);
   const box = document.createElement("div"); box.id = "phPlaces";
   box.innerHTML = '<div class="chips"></div>' +
     '<button class="pbtn" id="phSave"></button>' +
+    (FREE ? '<div class="njFreeNote">Njord Free keeps ' + FREE_PLACES + ' saved places. <b data-up="1">Get Njord</b> for more.</div>' : '') +
     '<button class="pbtn" id="phLoc">Use my location</button>' +
     '<div class="hintTxt">Swipe left or right on the sky to move between My location, home and your saved places.</div>';
   const h4 = document.createElement("h4"); h4.textContent = "Places"; h4.id = "phPlacesH";
@@ -918,7 +926,10 @@ function renderPlaces(){
                         esc(placeName(p)) + '<span class="x" data-x="' + i + '">&times;</span></span>').join("");
   const saved = list.some(p => sameTown(p, PLACE));
   const btn = $("phSave");
-  btn.textContent = saved ? "Saved ✓" : "Save " + placeName(PLACE);
+  const full = !saved && FREE && freeCount() >= FREE_PLACES;
+  if(full) btn.innerHTML = LOCK_SVG + esc("Save " + placeName(PLACE));
+  else btn.textContent = saved ? "Saved ✓" : "Save " + placeName(PLACE);
+  btn.classList.toggle("locked", full);
   btn.disabled = saved;
 }
 
@@ -943,9 +954,13 @@ $("phPlaces").addEventListener("click", e => {
 });
 $("phSave").addEventListener("click", () => {
   const list = loadPlaces();
+  /* Njord Free: at the limit nothing is saved; either way the Get Njord sheet follows a save */
+  if(FREE && freeCount() >= FREE_PLACES){ openUpsell(); return; }
   if(!list.some(p => sameTown(p, PLACE))){ list.push(Object.assign({}, PLACE)); savePlaces(list); }
   render(true);
+  if(FREE) openUpsell();
 });
+$("phPlaces").addEventListener("click", e => { if(e.target.closest("[data-up]")){ e.stopPropagation(); openUpsell(); } }, true);
 $("phLoc").addEventListener("click", () => { try { useMyLocation(); } catch(e){} });
 $("phSearch").addEventListener("click", () => {
   if(!setEl.hidden){ setEl.hidden = true; gearEl.classList.remove("on"); }
@@ -994,6 +1009,7 @@ top.addEventListener("click", e => {
 
 /* Android back button: close what is open, then scroll the sheet home */
 window.njordBack = function(){
+  if(upsellOpen()){ closeUpsell(); return true; }
   if(!alertSheet.hidden){ closeAlerts(); return true; }
   if(typeof alertBoxOpen === "function" && alertBoxOpen()){ closeAlertBox(); return true; }
   const pop = $("aurPop"); if(pop && !pop.hidden){ closeAuroraPop(); return true; }
@@ -1126,7 +1142,7 @@ const pkey = p => (+p.lat).toFixed(3) + "," + (+p.lng).toFixed(3);
 function alertPrefs(){
   let j = null; try { j = JSON.parse(STORE.get(AKEY) || "null"); } catch(e){}
   if(!j || typeof j !== "object") j = {};
-  return { on: !!j.on, mode: ["here","both","places"].includes(j.mode) ? j.mode : "both", sel: Array.isArray(j.sel) ? j.sel : null };
+  return { on: !!j.on, mode: FREE ? "here" : ["here","both","places"].includes(j.mode) ? j.mode : "both", sel: Array.isArray(j.sel) ? j.sel : null };
 }
 function homePlace(){ try { const h = JSON.parse(STORE.get("weather.home") || "null"); return h && isFinite(h.lat) ? h : null; } catch(e){ return null; } }
 /* home first, then the saved places, one row per town */
@@ -1153,7 +1169,7 @@ function pushPrefs(){
       units: unitsKey(), clock24: !!CONFIG.clock24, openAt: openAt(),
       home: strip(homePlace()), here: strip(here()), places: loadPlaces().map(strip),
       alerts: { on: ap.on, mode: ap.mode, places: cand.filter(p => keys.includes(pkey(p)) && usOK(p)).map(strip) },
-      daily: (() => { const dp = dailyPrefs(); return { on: dp.on, n: dp.n, times: dp.times.slice(0, dp.n), src: dp.src, place: strip(dp.place), buzz: dp.buzz }; })()
+      daily: FREE ? { on: false } : (() => { const dp = dailyPrefs(); return { on: dp.on, n: dp.n, times: dp.times.slice(0, dp.n), src: dp.src, place: strip(dp.place), buzz: dp.buzz }; })()
     }));
   } catch(e){}
 }
@@ -1173,6 +1189,8 @@ function syncAlertsUI(){
         ap.on = !ap.on; if(!ap.sel) ap.sel = selectedKeys(ap);
         saveAlertPrefs(ap);
         try { NA.enableAlerts(ap.on, ap.mode !== "places"); } catch(err){}
+      } else if(e.target.closest("[data-up]")){
+        openUpsell(); return;
       } else if(e.target.closest("[data-am]")){
         ap.mode = e.target.closest("[data-am]").dataset.am; if(!ap.sel) ap.sel = selectedKeys(ap);
         saveAlertPrefs(ap);
@@ -1202,9 +1220,14 @@ function syncAlertsUI(){
     '<div class="njRow"><div>Notifications</div><button id="bAlerts" class="njTog' + (ap.on ? " on" : "") + '" aria-label="Weather alert notifications"></button></div>' +
     (ap.on ?
       '<div class="njLbl">Alerts for</div>' +
+      (FREE ?
+        '<div class="seg njWrap"><button data-am="here" class="on">My location only</button>' +
+        '<button data-up="1" class="locked">' + LOCK_SVG + 'My location + selected places</button>' +
+        '<button data-up="1" class="locked">' + LOCK_SVG + 'Selected places only</button></div>' +
+        '<div class="njFreeNote">Alerts for saved places are in <b data-up="1">Njord</b>.</div>' :
       '<div class="seg njWrap"><button data-am="here"' + (ap.mode === "here" ? ' class="on"' : "") + '>My location only</button>' +
       '<button data-am="both"' + (ap.mode === "both" ? ' class="on"' : "") + '>My location + selected places</button>' +
-      '<button data-am="places"' + (ap.mode === "places" ? ' class="on"' : "") + '>Selected places only</button></div>' +
+      '<button data-am="places"' + (ap.mode === "places" ? ' class="on"' : "") + '>Selected places only</button></div>') +
       (ap.mode !== "here" ? '<div class="njLbl">Selected places</div>' + rows : "") +
       warn.map(w => '<div class="njWarn">' + w + '</div>').join("") : "") +
     '<div class="njDim">Warnings and watches notify, and so do their updates and cancellations; advisories show in the app only. ' +
@@ -1253,7 +1276,7 @@ function fmtHM(t){
   return fmtTime(+m[1]*60 + +m[2]);
 }
 function syncDailyUI(){
-  if(!NA || !setEl) return;
+  if(!NA || !setEl || FREE) return;
   let box = $("sDaily");
   if(!box){
     const before = [...setEl.querySelectorAll("h4")].find(h => /^weather alerts/i.test(h.textContent.trim())) ||
@@ -1359,6 +1382,78 @@ if(NJ_Q.get("brief") === "1"){
 
 
 render(true);
+/* ---- Njord Free (app build 37) ----------------------------------------------
+   Saved places count with Home (a Home that isn't also a saved place counts
+   as one). The Get Njord sheet opens from anything locked and after every
+   save; Settings has the same list above About; places outside the US show
+   a card instead of their forecast. */
+const UP_LIST = ["Unlimited saved places", "Forecasts outside the US", "Alerts for your saved places",
+                 "Daily forecast notifications", "Widget: any saved place, any update interval", "More radar (coming)"];
+function freeCount(){
+  const list = loadPlaces(), hm = homeOf();
+  return list.length + (hm && !list.some(p => sameTown(p, hm)) ? 1 : 0);
+}
+function upList(){ return '<ul class="upList">' + UP_LIST.map(t => '<li>' + esc(t) + '</li>').join("") + '</ul>'; }
+let upEl = null;
+function upsellOpen(){ return !!(upEl && !upEl.hidden); }
+function openUpsell(){
+  if(!FREE) return;
+  if(!upEl){
+    upEl = document.createElement("div"); upEl.id = "njUp"; upEl.hidden = true;
+    upEl.innerHTML = '<div class="upDim" data-close="1"></div><div class="upSheet"><h2>Get Njord</h2>' +
+      '<div class="upSub">Everything in Njord Free, plus:</div>' + upList() +
+      '<button class="upGo">Get Njord</button><div class="upSoon" hidden>Njord is not on Google Play yet.</div>' +
+      '<button class="upLater" data-close="1">Not now</button></div>';
+    document.body.appendChild(upEl);
+    upEl.addEventListener("click", e => {
+      if(e.target.closest("[data-close]")) closeUpsell();
+      else if(e.target.closest(".upGo")) getNjord(upEl);
+    });
+  }
+  upEl.querySelector(".upSoon").hidden = true;
+  upEl.hidden = false;
+}
+function closeUpsell(){ if(upEl) upEl.hidden = true; }
+/* no store listing yet: say so. Later this opens Njord's Google Play page. */
+function getNjord(scope){ const n = scope.querySelector(".upSoon"); if(n) n.hidden = false; }
+if(FREE && setEl){
+  const about = [...setEl.querySelectorAll("h4")].find(h => /^about$/i.test(h.textContent.trim()));
+  if(about){
+    const h4 = document.createElement("h4"); h4.textContent = "Get Njord";
+    const box = document.createElement("div"); box.id = "sGetNjord";
+    box.innerHTML = '<div class="upSub">Everything in Njord Free, plus:</div>' + upList() +
+      '<button class="upGo">Get Njord</button><div class="upSoon" hidden>Njord is not on Google Play yet.</div>';
+    about.parentNode.insertBefore(h4, about); about.parentNode.insertBefore(box, about);
+    box.addEventListener("mousedown", e => e.preventDefault());
+    box.addEventListener("click", e => { if(e.target.closest(".upGo")) getNjord(box); });
+  }
+}
+/* places outside the US: Njord Free covers the US only */
+let intlEl = null;
+function syncIntl(){
+  if(!FREE) return;
+  const cc = PLACE && PLACE.cc ? String(PLACE.cc).toUpperCase() : "US";
+  const out = cc !== "US";
+  if(out && !intlEl){
+    intlEl = document.createElement("div"); intlEl.id = "njIntl";
+    intlEl.innerHTML = '<div class="upDim"></div><div class="intlCard"><h2></h2>' +
+      '<p>Njord Free covers the United States. Forecasts for places in other countries are in Njord.</p>' +
+      '<button class="upGo">Get Njord</button><div class="upSoon" hidden>Njord is not on Google Play yet.</div>' +
+      '<button class="upLater">Back to My location</button></div>';
+    document.body.appendChild(intlEl);
+    intlEl.addEventListener("click", e => {
+      if(e.target.closest(".upGo")) getNjord(intlEl);
+      else if(e.target.closest(".upLater")){ intlEl.hidden = true; goHere(); }
+    });
+  }
+  if(intlEl){
+    if(out) intlEl.querySelector("h2").textContent = placeName(PLACE);
+    if(out && intlEl.hidden) intlEl.querySelector(".upSoon").hidden = true;
+    intlEl.hidden = !out;
+  }
+}
+if(FREE) setInterval(syncIntl, 700);
+
 setInterval(() => render(false), 1000);
 
 /* lift the loading screen once there is a forecast to show (at least a
@@ -1382,6 +1477,8 @@ setInterval(() => render(false), 1000);
   const el = document.getElementById("appVer");
   if(!el) return;
   if(!v){ if(/androidplatform\.net$/.test(location.hostname)) return; el.textContent = "Njord Weather \u00b7 web app"; el.hidden = false; return; }
-  el.textContent = "Njord Weather " + v + (b ? "  \u00b7  build " + b : "");
+  const nm = document.documentElement.classList.contains("njFree") ? "Njord Free " : "Njord Weather ";
+  el.textContent = nm + v + (b ? "  \u00b7  build " + b : "");
   el.hidden = false;
 })();
+
