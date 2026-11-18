@@ -5,14 +5,14 @@
 <!-- Njord lab (2026-11-18): NWS radar straight from NWS's map services, no
      server of our own. Two ways in, to see which behaves better on a phone:
      the ArcGIS image service (time-enabled) and the opengeo WMS layers.
-     Basemap: Esri Dark Gray Canvas. A test page, not part of the app. -->
+     Basemap: Esri (light gray by default; streets, terrain, dark to choose). A test page, not part of the app. -->
 <style>
   *{box-sizing:border-box}
   html,body{margin:0;height:100%;background:#0b1220;color:#e8eef5;font:13px/1.3 system-ui,sans-serif;overflow:hidden;touch-action:none}
   #map{position:absolute;inset:0;overflow:hidden}
   #pane{position:absolute;inset:0;will-change:transform}
   #pane img{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;user-select:none}
-  .rad{opacity:.85;image-rendering:auto}
+  .rad{opacity:.8;image-rendering:auto}
   #me{position:absolute;width:14px;height:14px;margin:-7px 0 0 -7px;border-radius:50%;background:#4fa3b5;border:2px solid #fff;box-shadow:0 0 0 4px rgba(79,163,181,.3)}
   .bar{position:absolute;left:10px;right:10px;background:rgba(15,26,46,.92);border-radius:14px;padding:8px 10px;box-shadow:0 6px 24px rgba(0,0,0,.45)}
   #top{top:calc(10px + env(safe-area-inset-top));display:flex;gap:6px;align-items:center;flex-wrap:wrap}
@@ -37,7 +37,8 @@
     <option value="neet">Echo tops (paid)</option>
     <option value="ptyp">Precipitation type (paid)</option>
   </select>
-  <select id="src"><option value="ags">ArcGIS service</option><option value="wms">WMS (opengeo)</option></select>
+  <select id="src"><option value="wms">WMS (opengeo)</option><option value="ags">ArcGIS service</option></select>
+  <select id="bm"><option value="light">Light map</option><option value="street">Streets</option><option value="topo">Terrain</option><option value="dark">Dark map</option></select>
   <button id="loc">My location</button>
 </div>
 <div id="zoom"><button id="zin">+</button><button id="zout">−</button></div>
@@ -51,7 +52,10 @@
 const $ = id => document.getElementById(id);
 const AGS = "https://mapservices.weather.noaa.gov/eventdriven/rest/services/radar/radar_base_reflectivity_time/ImageServer";
 const WMS = { bref: ["conus", "conus_bref_qcd"], cref: ["conus", "conus_cref_qcd"], neet: ["conus", "conus_neet_v18"], ptyp: ["conus", "conus_pcpn_typ"] };
-const ESRI = "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/";
+const ESRI = "https://server.arcgisonline.com/ArcGIS/rest/services/";
+/* basemap choices (2026-11-18: the dark one was too dark) - [base, labels on top or null] */
+const BM = { light: ["Canvas/World_Light_Gray_Base", "Canvas/World_Light_Gray_Reference"], street: ["World_Street_Map", null],
+             topo: ["World_Topo_Map", null], dark: ["Canvas/World_Dark_Gray_Base", "Canvas/World_Dark_Gray_Reference"] };
 const R = 6378137, FRAMES = 12, STEP = 10 * 60e3;
 let lat = 45.315, lng = -95.6, z = 7;          // z: web-map zoom level
 let times = [], idx = 0, playing = false, timer = null, gen = 0;
@@ -88,8 +92,9 @@ async function frameTimes(){
 async function draw(){
   const g = ++gen;
   $("pane").style.transform = "";
-  $("base").src = esriUrl("World_Dark_Gray_Base");
-  $("ref").src = esriUrl("World_Dark_Gray_Reference");
+  const [bs, rf] = BM[$("bm").value];
+  $("base").src = esriUrl(bs);
+  $("ref").hidden = !rf; if(rf) $("ref").src = esriUrl(rf);
   times = await frameTimes(); if(g !== gen) return;
   const box = $("frames"); box.innerHTML = "";
   let ok = 0, bad = 0;
@@ -112,7 +117,7 @@ $("play").onclick = () => { playing = !playing; $("play").textContent = playing 
 $("slider").oninput = e => { idx = +e.target.value; show(); };
 $("zin").onclick = () => { z = Math.min(11, z + 1); draw(); };
 $("zout").onclick = () => { z = Math.max(4, z - 1); draw(); };
-$("layer").onchange = draw; $("src").onchange = draw;
+$("layer").onchange = draw; $("src").onchange = draw; $("bm").onchange = draw;
 $("loc").onclick = () => navigator.geolocation.getCurrentPosition(p => { lat = p.coords.latitude; lng = p.coords.longitude; home = { lat, lng }; draw(); placeMe(); }, e => msg("Location: " + e.message));
 /* drag to pan; the pictures follow the finger, then reload for the new view */
 let drag = null;

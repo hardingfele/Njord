@@ -48,10 +48,14 @@ function nwsCode(txt, sky){
   if(/rain/.test(t)) return heavy ? 65 : light ? 61 : 63;
   if(/freezing fog/.test(t)) return 48;
   if(/fog|haze|smoke|mist/.test(t)) return 45;
-  if(isFinite(sky)){ return sky < 13 ? 0 : sky < 38 ? 1 : sky < 76 ? 2 : 3; }
-  if(/overcast|cloudy/.test(t) && !/partly|mostly sunny|mostly clear/.test(t)) return /mostly/.test(t) ? 3 : 3;
-  if(/partly|mostly sunny|mostly clear/.test(t)) return /partly/.test(t) ? 2 : 1;
+  /* cloud words first (2026-11-18: NWS's sky % and its words don't line up -
+     "Sunny" at 21%, "Mostly Clear" at 7% - so the words decide) */
+  if(/mostly cloudy|considerable cloud/.test(t)) return 3;
+  if(/overcast|^cloudy|\bcloudy$/.test(t) && !/partly|mostly/.test(t)) return 3;
+  if(/partly sunny|partly cloudy|partly clear/.test(t)) return 2;
+  if(/mostly sunny|mostly clear/.test(t)) return 1;
   if(/sunny|clear|fair/.test(t)) return 0;
+  if(isFinite(sky)) return sky < 13 ? 0 : sky < 38 ? 1 : sky < 76 ? 2 : 3;
   return null;
 }
 /* NWS grid series: [{validTime:"2026-11-18T18:00:00+00:00/PT3H", value}] -> value at a time */
@@ -107,7 +111,7 @@ async function load(lat, lng){
     const tdiff = ot != null && Math.abs(ot - p.temperature) >= 4;
     rows.push('<tr><td>' + esc(hr(t)) + '</td>' +
       '<td class="n' + (tdiff ? " diff" : "") + '">' + r0(p.temperature) + '°</td><td class="n">' + esc(p.shortForecast) + '</td><td class="n">' + (nc == null ? "?" : nc + " " + esc(WMO[nc] || "")) +
-      '</td><td class="n">' + r0(pop) + '%</td><td class="n">' + esc(p.windDirection + " " + p.windSpeed) + (gust ? " g" + r0(gust) : "") + '</td><td class="n">' + r0(sky) + '%</td>' +
+      '</td><td class="n">' + r0(pop) + '%</td><td class="n">' + esc(/^0 mph$/.test(p.windSpeed) ? "Calm" : p.windDirection + " " + p.windSpeed) + (gust ? " g" + r0(gust) : "") + '</td><td class="n">' + r0(sky) + '%</td>' +
       '<td class="o' + (tdiff ? " diff" : "") + '">' + r0(ot) + '°</td><td class="o">' + (oc == null ? "–" : oc + " " + esc(WMO[oc] || "")) +
       '</td><td class="o">' + (i >= 0 ? r0(om.hourly.precipitation_probability[i]) : "–") + '%</td><td class="o">' + (i >= 0 ? r0(om.hourly.wind_speed_10m[i]) + " g" + r0(om.hourly.wind_gusts_10m[i]) : "–") +
       '</td><td class="o">' + (i >= 0 ? r0(om.hourly.cloud_cover[i]) : "–") + '%</td></tr>');
@@ -129,7 +133,7 @@ async function load(lat, lng){
         '<td class="o">' + (j >= 0 ? r0(om.daily.temperature_2m_max[j]) + "° / " + r0(om.daily.temperature_2m_min[j]) + "°" : "–") + '</td><td class="o">' +
         (j >= 0 ? esc(WMO[om.daily.weather_code[j]] || om.daily.weather_code[j]) + " · " + r0(om.daily.precipitation_probability_max[j]) + "%" : "–") + '</td></tr>');
     }
-    html += '<h2>7 days</h2><div class="tw"><table><tr><th>Day</th><th>NWS high / low</th><th>NWS says</th><th>O-M high / low</th><th>O-M</th></tr>' + drows.join("") + '</table></div>';
+    html += '<h2>7 days</h2><div class="sub">NWS's low is the night <i>after</i> each day; Open-Meteo's is the coldest point of that calendar day (usually the morning before).</div><div class="tw"><table><tr><th>Day</th><th>NWS high / low</th><th>NWS says</th><th>O-M high / low</th><th>O-M</th></tr>' + drows.join("") + '</table></div>';
     html += '<h2>NWS written forecast</h2>' + ps.slice(0, 4).map(p => '<div class="card"><b>' + esc(p.name) + '</b><br>' + esc(p.detailedForecast) + '</div>').join("");
   }
   $("out").innerHTML = html;
