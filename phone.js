@@ -1285,6 +1285,11 @@ function syncDailyUI(){
         if(dp.on && dp.src === "here") try { NA.enableDaily(true, true); } catch(err){}
       } else if(e.target.closest("[data-db]")){
         dp.buzz = e.target.closest("[data-db]").dataset.db; saveDaily(dp);
+      } else if(e.target.closest("#bDailyTest")){
+        try { NA.testDaily(); } catch(err){}
+        const b = e.target.closest("#bDailyTest"); b.textContent = "Sending\u2026 (up to a minute)";
+        setTimeout(() => { try { b.textContent = "Send a test now"; } catch(err){} }, 20000);
+        return;
       } else if(e.target.closest("[data-fix]")){
         const f = e.target.closest("[data-fix]").dataset.fix;
         try { if(f === "notify") NA.enableDaily(true, false); else NA.requestBackgroundLocation(); } catch(err){}
@@ -1311,7 +1316,8 @@ function syncDailyUI(){
                                             : '<div class="njDim">No saved places yet.</div>') : "") +
       '<div class="njLbl">Alert</div><div class="seg"><button data-db="silent"' + (dp.buzz === "silent" ? ' class="on"' : "") + '>Silent</button>' +
         '<button data-db="vibrate"' + (dp.buzz === "vibrate" ? ' class="on"' : "") + '>Vibrate</button></div>' +
-      warn.map(w => '<div class="njWarn">' + w + '</div>').join("") : "") +
+      warn.map(w => '<div class="njWarn">' + w + '</div>').join("") +
+      '<button class="pbtn" id="bDailyTest" style="margin-top:9px;width:100%">Send a test now</button>' : "") +
     '<div class="njDim">The title is the temperature and sky at that moment; the text is the written forecast. ' +
     'Android may deliver them a few minutes late while the phone sleeps. Weather alerts are separate.</div>';
 }

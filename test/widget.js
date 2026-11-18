@@ -201,6 +201,7 @@ function compose(){
     return s + "…";
   };
   const glyph = (code, cx, cy, s, nt) => {
+    if(!nt && code === 0){ sunMark(cx, cy, s/5); return; }
     c.save(); c.shadowColor = "rgba(0,0,0,.35)"; c.shadowBlur = 3;
     try { paintGlyph(c, code, cx, cy, s, nt); } catch(e){}
     c.restore();
@@ -221,6 +222,20 @@ function compose(){
     c.closePath(); c.fill();
     c.restore();
     pill = { x: x - 4, y: yBase - 13, w: uw + 26, h: 20 };
+  };
+  /* the footer's sun: a disc with short rays, as big as the moon on the right
+     (the app's own weather glyph read as a flower at this size). Widget only. */
+  const sunMark = (cx, cy, k) => {
+    k = k || 1;
+    c.save(); c.shadowColor = "rgba(0,0,0,.6)"; c.shadowBlur = 4;
+    c.fillStyle = "#ffd36a"; c.strokeStyle = "#ffd36a"; c.lineWidth = 1.3*Math.sqrt(k); c.lineCap = "round";
+    c.beginPath(); c.arc(cx, cy, 3.6*k, 0, Math.PI*2); c.fill();
+    c.beginPath();
+    for(let i = 0; i < 8; i++){
+      const a = i*Math.PI/4, ca = Math.cos(a), sa = Math.sin(a);
+      c.moveTo(cx + ca*5*k, cy + sa*5*k); c.lineTo(cx + ca*6.6*k, cy + sa*6.6*k);
+    }
+    c.stroke(); c.restore();
   };
   const pin = (cx, cy) => {
     c.save(); c.fillStyle = "#fff"; c.shadowColor = "rgba(0,0,0,.75)"; c.shadowBlur = 5;
@@ -292,7 +307,7 @@ function compose(){
     rightWind(78, true);
     /* footer: sun and moon in the lower corners */
     const fy = Hd - 9;
-    glyph(0, P + 6, fy - 4, 6.4, false);
+    sunMark(P + 6.5, fy - 4);
     txt(sunText(), P + 17, fy, 11, 400, "left", .95);
     const mt = moonText(wide);
     c.font = "400 11px " + FT;
