@@ -201,7 +201,9 @@ function compose(){
     return s + "…";
   };
   const glyph = (code, cx, cy, s, nt) => {
-    if(!nt && code === 0){ sunMark(cx, cy, s/5); return; }
+    /* clear and mainly clear: the widget's own sun, or a crescent moon the same
+       size at night (the app's glyphs are much smaller at this scale) */
+    if(code === 0 || code === 1){ if(nt) moonMark(cx, cy, s/5); else sunMark(cx, cy, s/5); return; }
     c.save(); c.shadowColor = "rgba(0,0,0,.35)"; c.shadowBlur = 3;
     try { paintGlyph(c, code, cx, cy, s, nt); } catch(e){}
     c.restore();
@@ -238,6 +240,18 @@ function compose(){
       c.moveTo(cx + ca*5*k, cy + sa*5*k); c.lineTo(cx + ca*6.6*k, cy + sa*6.6*k);
     }
     c.stroke(); c.restore();
+  };
+  const moonMark = (cx, cy, k) => {
+    k = k || 1;
+    const R = 5.4*k, pad = 4, n = Math.ceil((R + pad)*2*D);
+    const m = document.createElement("canvas"); m.width = m.height = n;
+    const g = m.getContext("2d"); g.scale(D, D);
+    const o = R + pad;
+    g.fillStyle = "#ece6d2"; g.beginPath(); g.arc(o, o, R, 0, Math.PI*2); g.fill();
+    g.globalCompositeOperation = "destination-out";
+    g.beginPath(); g.arc(o + R*0.55, o - R*0.38, R*0.86, 0, Math.PI*2); g.fill();
+    c.save(); c.shadowColor = "rgba(0,0,0,.6)"; c.shadowBlur = 4;
+    c.drawImage(m, cx - o, cy - o, 2*o, 2*o); c.restore();
   };
   const pin = (cx, cy) => {
     c.save(); c.fillStyle = "#fff"; c.shadowColor = "rgba(0,0,0,.75)"; c.shadowBlur = 5;
