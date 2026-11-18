@@ -133,7 +133,7 @@ async function load(lat, lng){
         '<td class="o">' + (j >= 0 ? r0(om.daily.temperature_2m_max[j]) + "° / " + r0(om.daily.temperature_2m_min[j]) + "°" : "–") + '</td><td class="o">' +
         (j >= 0 ? esc(WMO[om.daily.weather_code[j]] || om.daily.weather_code[j]) + " · " + r0(om.daily.precipitation_probability_max[j]) + "%" : "–") + '</td></tr>');
     }
-    html += '<h2>7 days</h2><div class="sub">NWS's low is the night <i>after</i> each day; Open-Meteo's is the coldest point of that calendar day (usually the morning before).</div><div class="tw"><table><tr><th>Day</th><th>NWS high / low</th><th>NWS says</th><th>O-M high / low</th><th>O-M</th></tr>' + drows.join("") + '</table></div>';
+    html += '<h2>7 days</h2><div class="sub">The NWS low is the night <i>after</i> each day; the Open-Meteo low is the coldest point of that calendar day (usually the morning before).</div><div class="tw"><table><tr><th>Day</th><th>NWS high / low</th><th>NWS says</th><th>O-M high / low</th><th>O-M</th></tr>' + drows.join("") + '</table></div>';
     html += '<h2>NWS written forecast</h2>' + ps.slice(0, 4).map(p => '<div class="card"><b>' + esc(p.name) + '</b><br>' + esc(p.detailedForecast) + '</div>').join("");
   }
   $("out").innerHTML = html;
