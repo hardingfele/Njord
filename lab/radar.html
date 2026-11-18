@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>Njord lab · Radar</title>
+<!-- Njord lab (2026-11-18): NWS radar straight from NWS's map services, no
+     server of our own. Two ways in, to see which behaves better on a phone:
+     the ArcGIS image service (time-enabled) and the opengeo WMS layers.
+     Basemap: Esri Dark Gray Canvas. A test page, not part of the app. -->
+<style>
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:#0b1220;color:#e8eef5;font:13px/1.3 system-ui,sans-serif;overflow:hidden;touch-action:none}
+  #map{position:absolute;inset:0;overflow:hidden}
+  #pane{position:absolute;inset:0;will-change:transform}
+  #pane img{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;user-select:none}
+  .rad{opacity:.85;image-rendering:auto}
+  #me{position:absolute;width:14px;height:14px;margin:-7px 0 0 -7px;border-radius:50%;background:#4fa3b5;border:2px solid #fff;box-shadow:0 0 0 4px rgba(79,163,181,.3)}
+  .bar{position:absolute;left:10px;right:10px;background:rgba(15,26,46,.92);border-radius:14px;padding:8px 10px;box-shadow:0 6px 24px rgba(0,0,0,.45)}
+  #top{top:calc(10px + env(safe-area-inset-top));display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+  #bot{bottom:calc(10px + env(safe-area-inset-bottom))}
+  select,button{background:#1b2636;border:1px solid #2c3d50;color:#e8eef5;border-radius:9px;padding:7px 9px;font:inherit}
+  button.on{background:#1c3a48;border-color:#4fa3b5}
+  #zoom{position:absolute;right:10px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:6px}
+  #zoom button{width:40px;height:40px;font-size:20px;padding:0}
+  .row{display:flex;gap:8px;align-items:center}
+  input[type=range]{flex:1}
+  #time{min-width:70px;text-align:right;font-variant-numeric:tabular-nums}
+  #msg{font-size:11.5px;color:#8aa3b8;margin-top:5px;white-space:pre-wrap}
+  .legend{display:flex;height:8px;border-radius:4px;overflow:hidden;margin-top:6px}
+  .legend i{flex:1}
+  .lk{display:flex;justify-content:space-between;font-size:10.5px;color:#8aa3b8}
+</style></head><body>
+<div id="map"><div id="pane"><img id="base" alt=""><div id="frames"></div><img id="ref" alt=""></div><div id="me"></div></div>
+<div class="bar" id="top">
+  <select id="layer">
+    <option value="bref">Base reflectivity (free)</option>
+    <option value="cref">Composite reflectivity (paid)</option>
+    <option value="neet">Echo tops (paid)</option>
+    <option value="ptyp">Precipitation type (paid)</option>
+  </select>
+  <select id="src"><option value="ags">ArcGIS service</option><option value="wms">WMS (opengeo)</option></select>
+  <button id="loc">My location</button>
+</div>
+<div id="zoom"><button id="zin">+</button><button id="zout">−</button></div>
+<div class="bar" id="bot">
+  <div class="row"><button id="play">▶</button><input type="range" id="slider" min="0" max="0" value="0"><span id="time">–</span></div>
+  <div class="legend" id="leg"></div><div class="lk"><span>5</span><span>20</span><span>35</span><span>50</span><span>65 dBZ</span></div>
+  <div id="msg"></div>
+</div>
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const AGS = "https://mapservices.weather.noaa.gov/eventdriven/rest/services/radar/radar_base_reflectivity_time/ImageServer";
+const WMS = { bref: ["conus", "conus_bref_qcd"], cref: ["conus", "conus_cref_qcd"], neet: ["conus", "conus_neet_v18"], ptyp: ["conus", "conus_pcpn_typ"] };
+const ESRI = "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/";
+const R = 6378137, FRAMES = 12, STEP = 10 * 60e3;
+let lat = 45.315, lng = -95.6, z = 7;          // z: web-map zoom level
+let times = [], idx = 0, playing = false, timer = null, gen = 0;
+const W = () => innerWidth, H = () => innerHeight;
+const mx = l => R * l * Math.PI / 180, my = a => R * Math.log(Math.tan(Math.PI / 4 + a * Math.PI / 360));
+const res = () => 2 * Math.PI * R / 256 / Math.pow(2, z);    // metres per CSS pixel
+function bbox(){ const cx = mx(lng), cy = my(lat), r = res(), w = W() * r / 2, h = H() * r / 2; return [cx - w, cy - h, cx + w, cy + h]; }
+const dpr = () => Math.min(2, devicePixelRatio || 1);
+const size = () => Math.round(W() * dpr()) + "," + Math.round(H() * dpr());
+function esriUrl(svc){ return ESRI + svc + "/MapServer/export?bbox=" + bbox().join(",") + "&bboxSR=3857&imageSR=3857&size=" + size() + "&format=png32&transparent=true&f=image"; }
+function radarUrl(t){
+  const b = bbox().join(","), layer = $("layer").value;
+  if($("src").value === "ags" && layer === "bref")
+    return AGS + "/exportImage?bbox=" + b + "&bboxSR=3857&imageSR=3857&size=" + size() + "&format=png&transparent=true" + (t ? "&time=" + (t - STEP/2) + "," + (t + STEP/2) : "") + "&f=image";
+  const [ws, name] = WMS[layer];
+  const [w, h] = size().split(",");
+  return "https://opengeo.ncep.noaa.gov/geoserver/" + ws + "/" + name + "/ows?service=WMS&version=1.3.0&request=GetMap&layers=" + name +
+    "&styles=&crs=EPSG:3857&bbox=" + b + "&width=" + w + "&height=" + h + "&format=image/png&transparent=true" + (t ? "&time=" + new Date(t).toISOString() : "");
+}
+function msg(t){ $("msg").textContent = t; }
+async function frameTimes(){
+  /* the image service says which period it holds; else assume the last 2 hours */
+  let end = Date.now();
+  if($("src").value === "ags" && $("layer").value === "bref"){
+    try {
+      const j = await (await fetch(AGS + "?f=json")).json();
+      const te = j.timeInfo && j.timeInfo.timeExtent; if(te && te[1]) end = te[1];
+      msg("Image service holds " + (te ? new Date(te[0]).toLocaleTimeString([], {hour:"numeric",minute:"2-digit"}) + " – " + new Date(te[1]).toLocaleTimeString([], {hour:"numeric",minute:"2-digit"}) : "?"));
+    } catch(e){ msg("Couldn't read the service's time range (" + e.message + ") – using the last 2 hours."); }
+  } else msg("WMS: frames every 10 minutes for the last 2 hours (" + $("layer").selectedOptions[0].text + ").");
+  end = Math.floor(end / STEP) * STEP;
+  return Array.from({ length: FRAMES }, (_, k) => end - (FRAMES - 1 - k) * STEP);
+}
+async function draw(){
+  const g = ++gen;
+  $("pane").style.transform = "";
+  $("base").src = esriUrl("World_Dark_Gray_Base");
+  $("ref").src = esriUrl("World_Dark_Gray_Reference");
+  times = await frameTimes(); if(g !== gen) return;
+  const box = $("frames"); box.innerHTML = "";
+  let ok = 0, bad = 0;
+  times.forEach((t, k) => {
+    const im = new Image(); im.className = "rad"; im.style.visibility = "hidden";
+    im.onload = () => { ok++; status(); }; im.onerror = () => { bad++; status(); };
+    im.src = radarUrl(t); box.appendChild(im);
+  });
+  const status = () => { if(g === gen) $("msg").dataset.n = ok + " of " + FRAMES + " frames" + (bad ? ", " + bad + " failed" : ""); show(); };
+  $("slider").max = FRAMES - 1; idx = FRAMES - 1; $("slider").value = idx; show();
+}
+function show(){
+  const ims = $("frames").children;
+  for(let k = 0; k < ims.length; k++) ims[k].style.visibility = k === idx ? "visible" : "hidden";
+  $("time").textContent = times[idx] ? new Date(times[idx]).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "–";
+  if($("msg").dataset.n) $("msg").textContent = $("msg").textContent.split("\n")[0] + "\n" + $("msg").dataset.n;
+}
+function step(){ idx = (idx + 1) % FRAMES; $("slider").value = idx; show(); timer = setTimeout(step, idx === FRAMES - 1 ? 1500 : 450); }
+$("play").onclick = () => { playing = !playing; $("play").textContent = playing ? "❚❚" : "▶"; $("play").classList.toggle("on", playing); clearTimeout(timer); if(playing) step(); };
+$("slider").oninput = e => { idx = +e.target.value; show(); };
+$("zin").onclick = () => { z = Math.min(11, z + 1); draw(); };
+$("zout").onclick = () => { z = Math.max(4, z - 1); draw(); };
+$("layer").onchange = draw; $("src").onchange = draw;
+$("loc").onclick = () => navigator.geolocation.getCurrentPosition(p => { lat = p.coords.latitude; lng = p.coords.longitude; home = { lat, lng }; draw(); placeMe(); }, e => msg("Location: " + e.message));
+/* drag to pan; the pictures follow the finger, then reload for the new view */
+let drag = null;
+$("map").addEventListener("pointerdown", e => { if(e.target.closest(".bar,#zoom")) return; drag = { x: e.clientX, y: e.clientY, dx: 0, dy: 0 }; $("map").setPointerCapture(e.pointerId); });
+$("map").addEventListener("pointermove", e => { if(!drag) return; drag.dx = e.clientX - drag.x; drag.dy = e.clientY - drag.y; $("pane").style.transform = "translate(" + drag.dx + "px," + drag.dy + "px)"; placeMe(); });
+$("map").addEventListener("pointerup", () => {
+  if(!drag) return; const d = drag; drag = null;
+  if(Math.abs(d.dx) + Math.abs(d.dy) < 4) return;
+  const r = res(), cx = mx(lng) - d.dx * r, cy = my(lat) + d.dy * r;
+  lng = cx / R * 180 / Math.PI; lat = (2 * Math.atan(Math.exp(cy / R)) - Math.PI / 2) * 180 / Math.PI;
+  draw(); placeMe();
+});
+let home = { lat, lng };
+function placeMe(){
+  const r = res(), x = W() / 2 + (mx(home.lng) - mx(lng)) / r + (drag ? drag.dx : 0), y = H() / 2 - (my(home.lat) - my(lat)) / r + (drag ? drag.dy : 0);
+  $("me").style.left = x + "px"; $("me").style.top = y + "px";
+}
+const LEG = ["#04e9e7","#019ff4","#0300f4","#02fd02","#01c501","#008e00","#fdf802","#e5bc00","#fd9500","#fd0000","#d40000","#bc0000","#f800fd","#9854c6"];
+$("leg").innerHTML = LEG.map(c => '<i style="background:' + c + '"></i>').join("");
+const q = new URLSearchParams(location.search);
+if(q.get("lat")){ lat = +q.get("lat"); lng = +q.get("lng"); home = { lat, lng }; }
+addEventListener("resize", draw);
+draw(); placeMe();
+</script></body></html>

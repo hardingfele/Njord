@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Njord lab · NWS vs Open-Meteo</title>
+<!-- Njord lab (2026-11-18): the same place from NWS (api.weather.gov) and
+     Open-Meteo side by side, plus how each NWS hour would map onto the
+     weather codes Njord's scenes use. A test page, not part of the app. -->
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;background:#121a24;color:#e8eef5;font:13px/1.35 system-ui,sans-serif;padding:12px 10px 40px}
+  h1{font-size:17px;margin:4px 0 2px} h2{font-size:14px;margin:18px 0 6px;color:#9fd9e6}
+  .sub{color:#8aa3b8;font-size:12px}
+  form{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0}
+  input{width:92px;background:#1b2636;border:1px solid #2c3d50;color:#e8eef5;border-radius:8px;padding:7px}
+  button{background:#1c3a48;border:1px solid #4fa3b5;color:#fff;border-radius:8px;padding:7px 12px}
+  .tw{overflow-x:auto} table{border-collapse:collapse;width:100%;min-width:620px}
+  th,td{padding:5px 6px;border-bottom:1px solid #1d2a38;text-align:left;vertical-align:top;white-space:nowrap}
+  th{color:#8aa3b8;font-weight:600;font-size:11px;position:sticky;top:0;background:#121a24}
+  td.n{background:rgba(79,163,181,.07)} td.o{background:rgba(200,70,60,.06)}
+  .diff{color:#ffd36a} .err{color:#ff8a7a;white-space:pre-wrap} .ok{color:#8fd3a8}
+  .card{background:#1b2636;border-radius:10px;padding:10px;margin:6px 0;white-space:normal}
+  .k{color:#8aa3b8}
+</style></head><body>
+<h1>NWS vs Open-Meteo</h1>
+<div class="sub">Njord lab. NWS columns are blue, Open-Meteo red. "Code" is the weather code Njord would draw from each source.</div>
+<form id="f"><input id="lat" value="45.315"><input id="lng" value="-95.600"><button>Load</button><button type="button" id="me">My location</button></form>
+<div id="status" class="sub"></div>
+<div id="out"></div>
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
+const WMO = {0:"Clear",1:"Mainly clear",2:"Partly cloudy",3:"Overcast",45:"Fog",48:"Rime fog",51:"Light drizzle",53:"Drizzle",55:"Heavy drizzle",
+  56:"Freezing drizzle",57:"Freezing drizzle",61:"Light rain",63:"Rain",65:"Heavy rain",66:"Freezing rain",67:"Freezing rain",71:"Light snow",73:"Snow",
+  75:"Heavy snow",77:"Snow grains",80:"Light showers",81:"Showers",82:"Heavy showers",85:"Snow showers",86:"Heavy snow showers",95:"Thunderstorm",
+  96:"T-storm, hail",99:"T-storm, hail"};
+/* NWS words -> the WMO code the scenes understand (first match wins) */
+function nwsCode(txt, sky){
+  const t = String(txt || "").toLowerCase();
+  const heavy = /heavy/.test(t), light = /light|slight|chance|isolated|scattered|patchy/.test(t);
+  if(/thunder|t-storm|tstm/.test(t)) return /hail/.test(t) ? 96 : 95;
+  if(/freezing rain|freezing drizzle|ice pellet|sleet/.test(t)) return /drizzle/.test(t) ? 56 : 66;
+  if(/blizzard/.test(t)) return 75;
+  if(/snow shower|snow squall|flurr/.test(t)) return heavy ? 86 : 85;
+  if(/snow/.test(t)) return heavy ? 75 : light ? 71 : 73;
+  if(/drizzle/.test(t)) return heavy ? 55 : light ? 51 : 53;
+  if(/shower/.test(t)) return heavy ? 82 : light ? 80 : 81;
+  if(/rain/.test(t)) return heavy ? 65 : light ? 61 : 63;
+  if(/freezing fog/.test(t)) return 48;
+  if(/fog|haze|smoke|mist/.test(t)) return 45;
+  if(isFinite(sky)){ return sky < 13 ? 0 : sky < 38 ? 1 : sky < 76 ? 2 : 3; }
+  if(/overcast|cloudy/.test(t) && !/partly|mostly sunny|mostly clear/.test(t)) return /mostly/.test(t) ? 3 : 3;
+  if(/partly|mostly sunny|mostly clear/.test(t)) return /partly/.test(t) ? 2 : 1;
+  if(/sunny|clear|fair/.test(t)) return 0;
+  return null;
+}
+/* NWS grid series: [{validTime:"2026-11-18T18:00:00+00:00/PT3H", value}] -> value at a time */
+function dur(s){ const m = /P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?)?/.exec(s || ""); return m ? ((+m[1]||0)*24 + (+m[2]||0) + (+m[3]||0)/60) * 3600e3 : 3600e3; }
+function at(series, t){
+  if(!series || !series.values) return null;
+  for(const v of series.values){ const [a, d] = v.validTime.split("/"); const s = Date.parse(a); if(t >= s && t < s + dur(d)) return v.value; }
+  return null;
+}
+const c2f = c => c == null ? null : c * 9/5 + 32, kmh2mph = k => k == null ? null : k / 1.609344;
+const r0 = v => v == null || !isFinite(v) ? "–" : Math.round(v);
+const hr = t => new Date(t).toLocaleString([], { weekday: "short", hour: "numeric" });
+async function getJSON(url){
+  const r = await fetch(url, { headers: { Accept: "application/geo+json, application/json" } });
+  if(!r.ok) throw new Error(url.split("?")[0] + " -> HTTP " + r.status);
+  return r.json();
+}
+async function load(lat, lng){
+  $("out").innerHTML = ""; $("status").textContent = "Loading…";
+  const t0 = performance.now(); const errs = [];
+  let pt = null, hourly = null, daily = null, grid = null, om = null;
+  try {
+    pt = await getJSON("https://api.weather.gov/points/" + (+lat).toFixed(4) + "," + (+lng).toFixed(4));
+    const P = pt.properties;
+    [hourly, daily, grid] = await Promise.all([getJSON(P.forecastHourly), getJSON(P.forecast), getJSON(P.forecastGridData)].map(p => p.catch(e => { errs.push(e.message); return null; })));
+  } catch(e){ errs.push("NWS: " + e.message); }
+  try {
+    om = await getJSON("https://api.open-meteo.com/v1/forecast?latitude=" + lat + "&longitude=" + lng +
+      "&hourly=temperature_2m,weather_code,precipitation_probability,wind_speed_10m,wind_gusts_10m,wind_direction_10m,cloud_cover" +
+      "&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max" +
+      "&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto&forecast_days=7&timeformat=unixtime");
+  } catch(e){ errs.push("Open-Meteo: " + e.message); }
+  const ms = Math.round(performance.now() - t0);
+  $("status").innerHTML = (errs.length ? '<span class="err">' + esc(errs.join("\n")) + '</span><br>' : '<span class="ok">Loaded</span> ') + ms + " ms";
+  let html = "";
+  if(pt){
+    const P = pt.properties, rl = P.relativeLocation && P.relativeLocation.properties;
+    html += '<div class="card"><span class="k">NWS office</span> ' + esc(P.gridId) + ' · grid ' + esc(P.gridX + "," + P.gridY) +
+      (rl ? ' · near ' + esc(rl.city + ", " + rl.state) : "") + ' · radar ' + esc(P.radarStation || "–") +
+      (hourly ? ' · <span class="k">updated</span> ' + esc(new Date(hourly.properties.updateTime || hourly.properties.updated).toLocaleString()) : "") + '</div>';
+  }
+  /* next 36 hours */
+  const rows = [];
+  const omIdx = t => om ? om.hourly.time.findIndex(x => x * 1000 === t) : -1;
+  const per = hourly ? hourly.properties.periods.slice(0, 36) : [];
+  for(const p of per){
+    const t = Date.parse(p.startTime), i = omIdx(t);
+    const sky = grid ? at(grid.properties.skyCover, t) : null;
+    const gust = grid ? kmh2mph(at(grid.properties.windGust, t)) : null;
+    const nc = nwsCode(p.shortForecast, sky), oc = i >= 0 ? om.hourly.weather_code[i] : null;
+    const pop = p.probabilityOfPrecipitation ? p.probabilityOfPrecipitation.value : null;
+    const ot = i >= 0 ? om.hourly.temperature_2m[i] : null;
+    const tdiff = ot != null && Math.abs(ot - p.temperature) >= 4;
+    rows.push('<tr><td>' + esc(hr(t)) + '</td>' +
+      '<td class="n' + (tdiff ? " diff" : "") + '">' + r0(p.temperature) + '°</td><td class="n">' + esc(p.shortForecast) + '</td><td class="n">' + (nc == null ? "?" : nc + " " + esc(WMO[nc] || "")) +
+      '</td><td class="n">' + r0(pop) + '%</td><td class="n">' + esc(p.windDirection + " " + p.windSpeed) + (gust ? " g" + r0(gust) : "") + '</td><td class="n">' + r0(sky) + '%</td>' +
+      '<td class="o' + (tdiff ? " diff" : "") + '">' + r0(ot) + '°</td><td class="o">' + (oc == null ? "–" : oc + " " + esc(WMO[oc] || "")) +
+      '</td><td class="o">' + (i >= 0 ? r0(om.hourly.precipitation_probability[i]) : "–") + '%</td><td class="o">' + (i >= 0 ? r0(om.hourly.wind_speed_10m[i]) + " g" + r0(om.hourly.wind_gusts_10m[i]) : "–") +
+      '</td><td class="o">' + (i >= 0 ? r0(om.hourly.cloud_cover[i]) : "–") + '%</td></tr>');
+  }
+  if(rows.length) html += '<h2>Next 36 hours</h2><div class="tw"><table><tr><th>Hour</th><th>NWS</th><th>NWS says</th><th>→ Code</th><th>Rain</th><th>Wind mph</th><th>Sky</th>' +
+    '<th>O-M</th><th>O-M code</th><th>Rain</th><th>Wind mph</th><th>Cloud</th></tr>' + rows.join("") + '</table></div>' +
+    '<div class="sub">Yellow temperature = the two differ by 4° or more.</div>';
+  /* 7 days: NWS day/night periods next to Open-Meteo's daily high/low */
+  if(daily){
+    const ps = daily.properties.periods;
+    const drows = [];
+    for(let k = 0; k < ps.length; k++){
+      const p = ps[k]; if(!p.isDaytime && k > 0) continue;
+      const night = p.isDaytime ? ps[k + 1] : p, day = p.isDaytime ? p : null;
+      const date = (day || night).startTime.slice(0, 10);
+      const j = om ? om.daily.time.findIndex(x => new Date(x * 1000).toISOString().slice(0, 10) === date || new Date((x + 43200) * 1000).toISOString().slice(0, 10) === date) : -1;
+      drows.push('<tr><td>' + esc((day || night).name) + '</td><td class="n">' + (day ? r0(day.temperature) + "°" : "–") + ' / ' + (night ? r0(night.temperature) + "°" : "–") +
+        '</td><td class="n">' + esc((day || night).shortForecast) + '</td>' +
+        '<td class="o">' + (j >= 0 ? r0(om.daily.temperature_2m_max[j]) + "° / " + r0(om.daily.temperature_2m_min[j]) + "°" : "–") + '</td><td class="o">' +
+        (j >= 0 ? esc(WMO[om.daily.weather_code[j]] || om.daily.weather_code[j]) + " · " + r0(om.daily.precipitation_probability_max[j]) + "%" : "–") + '</td></tr>');
+    }
+    html += '<h2>7 days</h2><div class="tw"><table><tr><th>Day</th><th>NWS high / low</th><th>NWS says</th><th>O-M high / low</th><th>O-M</th></tr>' + drows.join("") + '</table></div>';
+    html += '<h2>NWS written forecast</h2>' + ps.slice(0, 4).map(p => '<div class="card"><b>' + esc(p.name) + '</b><br>' + esc(p.detailedForecast) + '</div>').join("");
+  }
+  $("out").innerHTML = html;
+}
+$("f").addEventListener("submit", e => { e.preventDefault(); load($("lat").value, $("lng").value); });
+$("me").addEventListener("click", () => navigator.geolocation.getCurrentPosition(p => {
+  $("lat").value = p.coords.latitude.toFixed(4); $("lng").value = p.coords.longitude.toFixed(4); load($("lat").value, $("lng").value);
+}, e => { $("status").textContent = "Location: " + e.message; }));
+load($("lat").value, $("lng").value);
+</script></body></html>
