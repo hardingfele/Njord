@@ -221,7 +221,9 @@ function compose(){
     c.lineTo(ex - tx*1.1 + nx*2.3, ey - ty*1.1 + ny*2.3); c.lineTo(ex - tx*1.1 - nx*2.3, ey - ty*1.1 - ny*2.3);
     c.closePath(); c.fill();
     c.restore();
-    pill = { x: x - 4, y: yBase - 13, w: uw + 26, h: 20 };
+    /* the tap target sits on the arrow (56 x 40 dp, as in the layout file); build 34's
+       started at "Updated" and stopped short of the arrow */
+    pill = { x: cx - 32, y: cy - 20, w: 56, h: 40 };
   };
   /* the footer's sun: a disc with short rays, as big as the moon on the right
      (the app's own weather glyph read as a flower at this size). Widget only. */
@@ -275,11 +277,32 @@ function compose(){
     c.font = "600 15.5px " + FT;
     const rw = Math.max(c.measureText(hiLo).width, 90);
     const maxMid = Wd - P - rw - mx - 8;
-    txt(fit(place, 12, 600, Math.max(30, maxMid)), mx, cy - 9, 12, 600);
-    txt(fit(cond, 12, 400, maxMid), mx, cy + 5, 12, 400, "left", .92);
-    if(maxMid > 100) updatedLine(mx, cy + 19, 10);
-    txt(hiLo, Wd - P, cy - 2, 15.5, 600, "right");
-    rightWind(cy + 15, false);
+    /* right: high · low and the wind, centred top to bottom; an alert's chip goes
+       under the wind and the three are centred together (build 35) */
+    const al = topAlert();
+    let chipW = 0, label = "";
+    if(al){
+      c.font = "700 10.5px " + FT;
+      label = fit(al.txt + (al.more > 0 ? "  +" + al.more : ""), 10.5, 700, Wd*0.42);
+      chipW = c.measureText(label).width + 16;
+    }
+    const mid = maxMid;
+    const mpx = HERE ? mx + 11 : mx;
+    if(HERE) pin(mx + 4, cy - 13.5);
+    txt(fit(place, 12, 600, Math.max(30, mid - (mpx - mx))), mpx, cy - 9, 12, 600);
+    txt(fit(cond, 12, 400, mid), mx, cy + 5, 12, 400, "left", .92);
+    if(mid > 100) updatedLine(mx, cy + 19, 10);
+    const blockH = 16 + 5 + 12 + (al ? 6 + 16 : 0);
+    /* centred; with an alert, low enough that the chip clears the "Updated" line */
+    const top = al ? Math.max(Hd/2 - blockH/2, cy + 24 - 39) : Hd/2 - blockH/2;
+    txt(hiLo, Wd - P, top + 13, 15.5, 600, "right");
+    rightWind(top + 31, false);
+    if(al){
+      const ax = Wd - P - chipW, ay = top + 39;
+      c.save(); c.fillStyle = al.col; c.beginPath();
+      c.roundRect ? c.roundRect(ax, ay, chipW, 16, 8) : c.rect(ax, ay, chipW, 16); c.fill();
+      c.fillStyle = "#fff"; c.font = "700 10.5px " + FT; c.textBaseline = "middle"; c.fillText(label, ax + 8, ay + 8.5); c.restore();
+    }
   } else {
     const wide = Wd >= 360;   // 5x2 and a full-width 4x2 are about the same size on a phone
     /* top left: place, refresh, temperature, condition, alert */
@@ -287,7 +310,7 @@ function compose(){
        the same mark) instead of " · My location", which the clock cut off */
     const px = HERE ? P + 11 : P;
     if(HERE) pin(P + 4, 16.5);
-    const nm = fit(place, 12, 600, (CLOCK ? Wd/2 - 52 - P : Wd*0.55 - 40) - (px - P));
+    const nm = fit(place, 12, 600, (CLOCK ? Wd*0.6 - P : Wd*0.55 - 40) - (px - P));
     txt(nm, px, 21, 12, 600);
     txt(WX.temp + "°", P - 1, 60, 40, 300);
     txt(fit(cond, 12, 400, Wd*0.5), P, 77, 12, 400, "left", .92);
@@ -298,13 +321,15 @@ function compose(){
       const label = fit(al.txt + (al.more > 0 ? "  +" + al.more : ""), 10.5, 700, Wd*0.45);
       const w = c.measureText(label).width + 16;
       c.save(); c.fillStyle = al.col; c.beginPath();
-      const ax = Wd - P - w; c.roundRect ? c.roundRect(ax, 86, w, 16, 8) : c.rect(ax, 86, w, 16); c.fill();
-      c.fillStyle = "#fff"; c.textBaseline = "middle"; c.fillText(label, ax + 8, 94.5); c.restore();
+      /* top right, in place of the weather icon (the condition is written on the left) */
+      const ax = Wd - P - w; c.roundRect ? c.roundRect(ax, 6, w, 17, 8.5) : c.rect(ax, 6, w, 17); c.fill();
+      c.fillStyle = "#fff"; c.textBaseline = "middle"; c.fillText(label, ax + 8, 15); c.restore();
     }
     /* top right: icon, high / low, wind */
-    glyph(WX.code, Wd - P - 18, 24, 13, night);
-    txt(hiLo, Wd - P, 62, 15.5, 600, "right");
-    rightWind(78, true);
+    if(!al) glyph(WX.code, Wd - P - 18, 24, 13, night);
+    /* high over low, then the wind on the same line as "Updated" */
+    if(d0){ txt("H " + d0.hi + "°", Wd - P, 60, 15.5, 600, "right"); txt("L " + d0.lo + "°", Wd - P, 78, 15.5, 600, "right"); }
+    rightWind(93, true);
     /* footer: sun and moon in the lower corners */
     const fy = Hd - 9;
     sunMark(P + 6.5, fy - 4);
@@ -322,16 +347,16 @@ function compose(){
     } catch(e){}
     /* the next hours, evenly across, just above the footer */
     const hrs = nextHours(Math.max(4, Math.min(7, Math.floor((Wd - 2*P)/50) + 1))), n = hrs.length;
-    const top = Math.max(100, fy - 86), span = Wd - 2*P;
+    const top = Math.max(100, fy - 92), span = Wd - 2*P;
     hrs.forEach((h, i) => {
       const x = P + (n > 1 ? span*i/(n - 1) : span/2);
       const al = i === 0 ? "left" : i === n - 1 ? "right" : "center";
       const gx = al === "left" ? x + 12 : al === "right" ? x - 12 : x;
-      txt(h.lab, gx, top + 12, 12.5, 400, "center", .95);
-      glyph(h.code, gx, top + 30, 9.2, h.night);
-      txt(h.temp + "°", gx, top + 56, 13.5, 600, "center");
-      if(h.pop) { c.save(); c.font = "500 11px " + FT; c.fillStyle = "#9fd0ff"; c.textAlign = "center";
-                  c.shadowColor = "rgba(0,0,0,.5)"; c.shadowBlur = 3; c.fillText(h.pop, gx, top + 70); c.restore(); }
+      txt(h.lab, gx, top + 13, 14, 400, "center", .95);
+      glyph(h.code, gx, top + 31, 9.6, h.night);
+      txt(h.temp + "°", gx, top + 58, 16, 600, "center");
+      if(h.pop) { c.save(); c.font = "500 12.5px " + FT; c.fillStyle = "#9fd0ff"; c.textAlign = "center";
+                  c.shadowColor = "rgba(0,0,0,.5)"; c.shadowBlur = 3; c.fillText(h.pop, gx, top + 73); c.restore(); }
     });
   }
   let png = "";
