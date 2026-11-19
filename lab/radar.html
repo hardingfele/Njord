@@ -39,8 +39,8 @@
   </select>
   <select id="src"><option value="wms">WMS (opengeo)</option><option value="ags">ArcGIS service</option></select>
   <select id="bm"><option value="street">Streets</option><option value="lightc">Light, more contrast</option><option value="light">Light map</option><option value="topo">Terrain</option><option value="dark">Dark map</option></select>
-  <select id="txt"><option value="2">Text: large</option><option value="2.8">Text: larger</option><option value="1.4">Text: medium</option><option value="1">Text: small (now)</option></select>
-  <button id="loc">My location</button><span style="font-size:11px;color:#8aa3b8">lab v4</span>
+  <select id="txt"><option value="s3">Sharp 3×</option><option value="s3.5">Sharp 3.5×</option><option value="s2.5">Sharp 2.5×</option><option value="3">Stretched 3×</option><option value="2">Stretched 2× (last try)</option><option value="1">Small (app now)</option></select>
+  <button id="loc">My location</button><span style="font-size:11px;color:#8aa3b8">lab v5</span>
 </div>
 <div id="zoom"><button id="zin">+</button><button id="zout">−</button></div>
 <div class="bar" id="bot">
@@ -69,10 +69,15 @@ const dpr = () => Math.min(2, devicePixelRatio || 1);
 const size = () => Math.round(W() * dpr()) + "," + Math.round(H() * dpr());
 /* the map's labels are drawn at a fixed pixel size, so asking for a smaller
    picture and stretching it makes town names bigger (2026-11-18: unreadable) */
+/* "Sharp": full-resolution picture, but tell the map server the screen has a
+   higher dpi so it draws the labels bigger itself (crisp). "Stretched": a
+   smaller picture scaled up (bigger but softer). lab v5 */
 function esriUrl(svc){
-  const k = +$("txt").value || 1, d = Math.max(0.5, dpr() / k);
+  const v = $("txt").value, sharp = v[0] === "s", k = parseFloat(sharp ? v.slice(1) : v) || 1;
+  const d = sharp ? dpr() : Math.max(0.5, dpr() / k);
   const sz = Math.round(W() * d) + "," + Math.round(H() * d);
-  return ESRI + svc + "/MapServer/export?bbox=" + bbox().join(",") + "&bboxSR=3857&imageSR=3857&size=" + sz + "&format=png32&transparent=true&f=image";
+  return ESRI + svc + "/MapServer/export?bbox=" + bbox().join(",") + "&bboxSR=3857&imageSR=3857&size=" + sz +
+    (sharp ? "&dpi=" + Math.round(96 * dpr() * k / 2) : "") + "&format=png32&transparent=true&f=image";
 }
 function radarUrl(t){
   const b = bbox().join(","), layer = $("layer").value;
