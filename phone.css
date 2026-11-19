@@ -352,3 +352,42 @@ html:not(.phone) #phPlacesH, html:not(.phone) #phPlaces { display: none; }
   padding: 20px; color: #e8eef8; text-align: center; box-shadow: 0 10px 40px rgba(0,0,0,.5); }
 .intlCard p { color: #9fb2cf; font-size: 13.5px; margin: 6px 0 14px; line-height: 1.4; }
 .intlCard .upGo { width: auto; display: inline-block; padding: 12px 26px; }
+
+/* ---- Radar (app build 38) ---- */
+.rdMap { position: relative; overflow: hidden; background: #e7e8e5; }
+.rdMap img, .rdMap .rdFrames, .rdPane { position: absolute; inset: 0; width: 100%; height: 100%; }
+.rdMap img { pointer-events: none; user-select: none; -webkit-user-drag: none; }
+.rdF { opacity: .8; visibility: hidden; }
+.rdPin { position: absolute; left: 50%; top: 50%; width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%;
+  background: #4fa3b5; border: 2px solid #fff; box-shadow: 0 0 0 4px rgba(79,163,181,.3); pointer-events: none; }
+#phRadar { cursor: pointer; }
+#phRadar .rdMap { height: 200px; border-radius: 12px; margin-top: 2px; }
+#phRadar .rdTime { position: absolute; left: 8px; bottom: 8px; background: rgba(15,26,46,.8); color: #fff;
+  font-size: 11.5px; padding: 3px 8px; border-radius: 8px; }
+#rdFull { position: fixed; inset: 0; z-index: 8500; background: #e7e8e5; touch-action: none; }
+#rdFull[hidden] { display: none; }
+#rdFull > .rdMap { position: absolute; inset: 0; }
+.rdPane { will-change: transform; transform-origin: 50% 50%; }
+.rdTop { position: absolute; left: 10px; right: 10px; top: calc(12px + env(safe-area-inset-top)); display: flex; gap: 8px; align-items: center; }
+.rdB { background: rgba(15,26,46,.92); color: #e8eef5; border: 0; border-radius: 12px; padding: 9px 12px;
+  font: 600 14px Figtree, system-ui, sans-serif; box-shadow: 0 4px 16px rgba(0,0,0,.3); cursor: pointer; }
+.rdZoom { position: absolute; right: 10px; top: 42%; display: flex; flex-direction: column; gap: 6px; }
+.rdZoom .rdB { width: 42px; height: 42px; padding: 0; font-size: 20px; }
+.rdBot { position: absolute; left: 10px; right: 10px; bottom: calc(14px + env(safe-area-inset-bottom)); background: rgba(15,26,46,.94);
+  border-radius: 14px; padding: 10px 12px 8px; color: #e8eef5; box-shadow: 0 6px 24px rgba(0,0,0,.35); }
+.rdRow { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.rdRow input { flex: 1; accent-color: #78e0f2; }
+#rdTimeF { font-variant-numeric: tabular-nums; font-size: 13px; min-width: 64px; text-align: right; }
+.rdPlay { width: 38px; height: 38px; border-radius: 50%; background: #c8463c; border: 0; color: #fff; font-size: 13px; cursor: pointer; flex: none; }
+.rdBar { display: flex; height: 6px; border-radius: 3px; overflow: hidden; }
+.rdBar i { flex: 1; }
+.rdLk { display: flex; justify-content: space-between; font-size: 10px; color: #8aa3b8; margin-top: 2px; }
+.rdAttr { font-size: 9.5px; color: #6f8296; margin-top: 4px; text-align: right; }
+.rdLay { position: absolute; left: 10px; right: 10px; top: calc(60px + env(safe-area-inset-top)); background: rgba(15,26,46,.96);
+  border-radius: 14px; padding: 6px 0; color: #e8eef5; box-shadow: 0 6px 24px rgba(0,0,0,.35); }
+.rdLay > div { padding: 10px 14px; font-size: 14px; display: flex; justify-content: space-between; gap: 10px; cursor: pointer; }
+.rdLay > div.on { color: #78e0f2; }
+.rdLay > div.lk { opacity: .5; cursor: default; }
+.rdLay small { color: #8aa3b8; font-size: 11.5px; white-space: nowrap; }
+.rdLay .rdFreeNote { font-size: 12px; color: #9fb2cf; cursor: default; display: block; }
+.rdLay .rdFreeNote b { color: #78e0f2; }
