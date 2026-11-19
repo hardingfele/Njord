@@ -391,3 +391,11 @@ html:not(.phone) #phPlacesH, html:not(.phone) #phPlaces { display: none; }
 .rdLay small { color: #8aa3b8; font-size: 11.5px; white-space: nowrap; }
 .rdLay .rdFreeNote { font-size: 12px; color: #9fb2cf; cursor: default; display: block; }
 .rdLay .rdFreeNote b { color: #78e0f2; }
+/* build 39: vector map (MapLibre) */
+.rdGL { position: absolute; inset: 0; }
+#phRadar .rdGL { pointer-events: none; }
+#phRadar .maplibregl-marker { pointer-events: none; }
+#phRadar .rdTime { z-index: 2; }
+.rdGear { padding: 8px 10px; display: flex; align-items: center; }
+.rdLay .rdHead { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: #8aa3b8; cursor: default; padding-bottom: 4px; }
+.rdTop, .rdZoom, .rdBot, .rdLay { z-index: 3; }

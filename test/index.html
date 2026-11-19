@@ -220,12 +220,14 @@
 <!-- Njord Weather app: loading screen (fjord, aurora, longship). phone.js lifts it once the first forecast is in. -->
 <div id="njLoad" style="position:fixed;inset:0;z-index:100;background:#0E1A33;transition:opacity .5s ease">
 <svg viewBox="0 0 108 200" preserveAspectRatio="xMidYMax slice" style="position:absolute;inset:0;width:100%;height:100%">
-<defs><linearGradient id="njSky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0B1630"/><stop offset=".62" stop-color="#2A3560"/><stop offset="1" stop-color="#6B5478"/></linearGradient></defs>
-<rect width="108" height="200" fill="url(#njSky)"/>
+<defs><linearGradient id="njSky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0B1630"/><stop offset=".62" stop-color="#2A3560"/><stop offset="1" stop-color="#6B5478"/></linearGradient><linearGradient id="njDawn" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2B4F86"/><stop offset=".55" stop-color="#E39A6B"/><stop offset="1" stop-color="#F4C98A"/></linearGradient></defs>
+<rect id="njLsky" width="108" height="200" fill="url(#njSky)"/>
+<g class="njNight">
 <path d="M-4,86 C18,62 40,82 60,66 C76,54 92,60 112,52" stroke="#78F0AA" stroke-opacity=".8" stroke-width="5" fill="none" stroke-linecap="round"/>
 <path d="M-4,96 C20,76 42,92 62,78 C78,68 94,72 112,66" stroke="#78E0F2" stroke-opacity=".3" stroke-width="3" fill="none" stroke-linecap="round"/>
 <circle cx="84" cy="100" r="6.5" fill="#F4F1E6"/>
-<g fill="#fff" fill-opacity=".7"><circle cx="14" cy="40" r=".6"/><circle cx="40" cy="28" r=".5"/><circle cx="70" cy="36" r=".6"/><circle cx="96" cy="80" r=".5"/><circle cx="22" cy="110" r=".5"/></g>
+<g fill="#fff" fill-opacity=".7"><circle cx="14" cy="40" r=".6"/><circle cx="40" cy="28" r=".5"/><circle cx="70" cy="36" r=".6"/><circle cx="96" cy="80" r=".5"/><circle cx="22" cy="110" r=".5"/></g></g>
+<g class="njDay" style="display:none"><circle cx="80" cy="112" r="8" fill="#FFC35C"/><g fill="#FFF4EA" fill-opacity=".9"><ellipse cx="24" cy="92" rx="12" ry="5"/><ellipse cx="31" cy="89" rx="8" ry="5"/></g></g>
 <path fill="#56658E" d="M0,160 L18,140 L30,148 L48,126 L64,142 L80,128 L108,148 L108,200 L0,200 Z"/>
 <path fill="#E6ECF6" d="M48,126 L42,133 L45,132 L48,135 L51,132 L54,133 Z"/>
 <path fill="#E6ECF6" d="M80,128 L75,133 L78,133 L80,136 L83,133 Z"/>
@@ -234,15 +236,32 @@
 <rect x="0" y="172" width="108" height="28" fill="#0F1A2C"/>
 <g transform="translate(34,150) scale(.42)">
 <line x1="56" y1="34" x2="56" y2="76" stroke="#E9D9B8" stroke-width="2.4"/>
-<path d="M42,38 L72,38 C75,50 75,60 72,68 L42,68 C45,58 45,48 42,38 Z" fill="#C8463C"/>
-<path d="M42,38 L72,38 C75,50 75,60 72,68 L42,68 C45,58 45,48 42,38 Z M49,38 C52,48.5 52,58.5 49,68 M57,38 C60,49 60,59 57,68 M65,38 C68,49.5 68,59.5 65,68" fill="none" stroke="#F1E6D0" stroke-width="2"/>
+<path id="njLsail" d="M42,38 L72,38 C75,50 75,60 72,68 L42,68 C45,58 45,48 42,38 Z" fill="#C8463C"/>
+<path id="njLseam" d="M42,38 L72,38 C75,50 75,60 72,68 L42,68 C45,58 45,48 42,38 Z M49,38 C52,48.5 52,58.5 49,68 M57,38 C60,49 60,59 57,68 M65,38 C68,49.5 68,59.5 65,68" fill="none" stroke="#F1E6D0" stroke-width="2"/>
 <path d="M56,87.5 C72,87.5 84,82 88,74 C89.6,70.8 90.2,67 89.4,63.4 C89,61.8 86.6,62 86.6,63.6 C86.9,67.6 85.4,72.6 82,76 L30,76 C26.6,72.6 25.1,67.6 25.4,63.6 C25.4,62 23,61.8 22.6,63.4 C21.8,67 22.4,70.8 24,74 C28,82 40,87.5 56,87.5 Z" fill="#E9D9B8"/>
 </g>
 <path d="M8,188 C18,185 24,191 34,188 C44,185 50,191 60,188 C70,185 76,191 86,188 C94,186 98,189 102,188" stroke="#7FC8E6" stroke-opacity=".8" stroke-width="1.4" fill="none" stroke-linecap="round"/>
 </svg>
-<div style="position:absolute;left:0;right:0;top:20%;text-align:center;color:#F4F1E6;font:300 40px/1.1 Fraunces,Georgia,serif;letter-spacing:.5px;text-shadow:0 2px 12px rgba(0,0,0,.4)">Njord Weather
+<div style="position:absolute;left:0;right:0;top:20%;text-align:center;color:#F4F1E6;font:300 40px/1.1 Fraunces,Georgia,serif;letter-spacing:.5px;text-shadow:0 2px 12px rgba(0,0,0,.4)"><span id="njLname">Njord Weather</span>
 <div style="font:500 13px/1.4 Figtree,system-ui,sans-serif;letter-spacing:.18em;text-transform:uppercase;opacity:.7;margin-top:10px">Reading the sky&hellip;</div></div>
 </div>
+<script>
+/* Njord Free (app build 39): the loading screen matches the Free icon - dawn
+   sky, low sun, a cloud, a plain sail - and says Njord Free */
+(function(){
+  let free = false;
+  try { free = !!(window.NjordAndroid && NjordAndroid.isFree && NjordAndroid.isFree()); } catch(e){}
+  if(!free && !/[?&]free=1\b/.test(location.search)) return;
+  const L = document.getElementById("njLoad"); if(!L) return;
+  L.style.background = "#2B4F86";
+  document.getElementById("njLsky").setAttribute("fill", "url(#njDawn)");
+  L.querySelector(".njNight").style.display = "none";
+  L.querySelector(".njDay").style.display = "";
+  document.getElementById("njLsail").setAttribute("fill", "#E6DCC4");
+  document.getElementById("njLseam").setAttribute("stroke", "#A89C80");
+  document.getElementById("njLname").textContent = "Njord Free";
+})();
+</script>
 <canvas id="sky"></canvas>
 <div id="aurPop" hidden><b></b><span></span></div>
 <div id="ui">

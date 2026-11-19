@@ -55,8 +55,7 @@ ph.innerHTML =
   '<div id="phSheet"><div class="grab"></div><div id="phAur"></div>' +
     '<section class="pc" id="phHourly"><h3>Next 24 hours <a class="jump" id="phJump">10-day &rsaquo;</a></h3><div class="sum24"></div><div class="hrs"></div></section>' +
     '<section class="pc" id="phRadar" hidden><h3>Radar <a class="jump" id="phRadarJump">Full map &rsaquo;</a></h3>' +
-      '<div class="rdMap" id="phRadarMap"><img class="rdBase" alt=""><div class="rdFrames"></div><img class="rdRef" alt="">' +
-      '<div class="rdPin"></div><span class="rdTime"></span></div></section>' +
+      '<div class="rdMap" id="phRadarMap"><div class="rdGL"></div><span class="rdTime"></span></div></section>' +
     '<div class="grid2" id="phDetails"></div>' +
     '<section class="pc" id="phSky" style="margin-top:12px"></section>' +
     '<section class="pc" id="phDays"><h3>10-day forecast <span class="tapHint">tap a day</span></h3><div class="days"></div></section>' +
@@ -1012,7 +1011,7 @@ top.addEventListener("click", e => {
 
 /* Android back button: close what is open, then scroll the sheet home */
 window.njordBack = function(){
-  if(rdOpenNow()){ if(!$("rdLay").hidden) $("rdLay").hidden = true; else rdClose(); return true; }
+  if(rdOpenNow()){ if(!$("rdLay").hidden) $("rdLay").hidden = true; else if(!$("rdSet").hidden) $("rdSet").hidden = true; else rdClose(); return true; }
   if(upsellOpen()){ closeUpsell(); return true; }
   if(!alertSheet.hidden){ closeAlerts(); return true; }
   if(typeof alertBoxOpen === "function" && alertBoxOpen()){ closeAlertBox(); return true; }
@@ -1459,17 +1458,24 @@ function syncIntl(){
 if(FREE) setInterval(syncIntl, 700);
 
 
-/* ---- Radar (app build 38) ---------------------------------------------------
-   NWS radar straight from NWS's own map service (opengeo.ncep.noaa.gov WMS,
-   MRMS mosaics for the US) on Esri's light gray map - no server of our own.
-   A card under Next 24 hours loops the last 2 hours around the place; tapping
-   it opens a full-screen map with pan, zoom, a timeline and layers. Njord
-   Free has base reflectivity; the other layers are greyed out. Places
-   outside the US get no card (NWS radar covers the US). */
+/* ---- Radar (app build 38; vector map in build 39) ---------------------------
+   NWS radar straight from NWS's map service (opengeo.ncep.noaa.gov WMS, MRMS
+   mosaics for the US), laid under the town names of a vector map that the
+   phone draws itself (MapLibre GL JS + OpenFreeMap tiles from OpenStreetMap:
+   free, no key) - so names stay sharp and big, the way NOAA Weather
+   Unofficial looks with Google's map. A card under Next 24 hours loops the
+   last 2 hours; tapping it opens a full-screen map with pan, zoom, a
+   timeline, layers and a gear for the map style. Njord Free has base
+   reflectivity; the other layers are greyed out. No card outside the US. */
 const RD = {
   W: "https://opengeo.ncep.noaa.gov/geoserver/conus/",
-  ESRI: "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/",
-  STEP: 10 * 60e3, N: 12, R: 6378137,
+  STYLES: [
+    { id: "liberty", name: "Liberty", note: "colour, like a road map" },
+    { id: "positron", name: "Positron", note: "light and quiet" },
+    { id: "bright", name: "Bright", note: "bold colours" }
+  ],
+  TEXT: 1.3,                       // labels 1.3x the map's own size (chosen in the lab)
+  STEP: 10 * 60e3, N: 12,
   layers: [
     { id: "bref", name: "Base reflectivity", note: "rain & snow now", wms: "conus_bref_qcd", dbz: true },
     { id: "cref", name: "Composite reflectivity", note: "strongest in the column", wms: "conus_cref_qcd", dbz: true, paid: true },
@@ -1480,100 +1486,168 @@ const RD = {
   layer: "bref"
 };
 const RD_LEG = ["#04e9e7","#019ff4","#0300f4","#02fd02","#01c501","#008e00","#fdf802","#e5bc00","#fd9500","#fd0000","#d40000","#bc0000","#f800fd","#9854c6"];
-const rdMX = l => RD.R * l * Math.PI / 180, rdMY = a => RD.R * Math.log(Math.tan(Math.PI / 4 + a * Math.PI / 360));
-const rdLng = x => x / RD.R * 180 / Math.PI, rdLat = y => (2 * Math.atan(Math.exp(y / RD.R)) - Math.PI / 2) * 180 / Math.PI;
-const rdRes = z => 2 * Math.PI * RD.R / 256 / Math.pow(2, z);
+function rdStyle(){ try { const v = localStorage.getItem("njord.radarStyle"); if(RD.STYLES.some(x => x.id === v)) return v; } catch(e){} return "liberty"; }
+const rdStyleUrl = id => "https://tiles.openfreemap.org/styles/" + id;
 function rdUS(){ const cc = PLACE && PLACE.cc ? String(PLACE.cc).toUpperCase() : "US"; return cc === "US"; }
 function rdTimes(){ const end = Math.floor((Date.now() - 4 * 60e3) / RD.STEP) * RD.STEP; return Array.from({ length: RD.N }, (_, k) => end - (RD.N - 1 - k) * RD.STEP); }
-/* one map view: v = { lat, lng, z, w, h } in CSS pixels */
-function rdBox(v){ const r = rdRes(v.z), cx = rdMX(v.lng), cy = rdMY(v.lat); return [cx - v.w*r/2, cy - v.h*r/2, cx + v.w*r/2, cy + v.h*r/2]; }
-function rdPx(v){ const d = Math.min(2, devicePixelRatio || 1); return [Math.round(v.w*d), Math.round(v.h*d)]; }
-function rdEsri(v, svc){ const [w, h] = rdPx(v); return RD.ESRI + svc + "/MapServer/export?bbox=" + rdBox(v).join(",") + "&bboxSR=3857&imageSR=3857&size=" + w + "," + h + "&format=png32&transparent=true&f=image"; }
-function rdWms(v, layer, t){
-  const L = RD.layers.find(x => x.id === layer) || RD.layers[0], [w, h] = rdPx(v);
-  return RD.W + L.wms + "/ows?service=WMS&version=1.3.0&request=GetMap&layers=" + L.wms + "&styles=&crs=EPSG:3857&bbox=" + rdBox(v).join(",") +
-    "&width=" + w + "&height=" + h + "&format=image/png&transparent=true&time=" + new Date(t).toISOString();
-}
 const rdClock = t => new Date(t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", timeZone: PLACE && PLACE.tz || undefined });
-/* draws base + frames into a box element; returns the frame list */
-function rdPaint(el, v, layer){
-  el.querySelector(".rdBase").src = rdEsri(v, "World_Light_Gray_Base");
-  el.querySelector(".rdRef").src = rdEsri(v, "World_Light_Gray_Reference");
-  const box = el.querySelector(".rdFrames"), times = rdTimes();
-  box.innerHTML = "";
-  times.forEach(t => { const im = new Image(); im.alt = ""; im.className = "rdF"; im.src = rdWms(v, layer, t); box.appendChild(im); });
+/* the map library: the app carries its own copy (vendor/, added by the build);
+   the web app, or a copy that is missing, loads it from unpkg */
+let rdLibP = null;
+function rdLib(){
+  if(window.maplibregl) return Promise.resolve(true);
+  if(rdLibP) return rdLibP;
+  const add = (base) => new Promise((ok, no) => {
+    const l = document.createElement("link"); l.rel = "stylesheet"; l.href = base + "maplibre-gl.css"; document.head.appendChild(l);
+    const sc = document.createElement("script"); sc.src = base + "maplibre-gl.js"; sc.onload = () => ok(true); sc.onerror = () => { l.remove(); sc.remove(); no(); };
+    document.head.appendChild(sc);
+  });
+  rdLibP = add("vendor/").catch(() => add("https://unpkg.com/maplibre-gl@4.7.1/dist/")).catch(() => { rdLibP = null; return false; });
+  return rdLibP;
+}
+/* bigger labels: plain sizes and the outputs of zoom curves are multiplied */
+function rdText(map, k){
+  for(const L of map.getStyle().layers){
+    if(L.type !== "symbol" || !L.layout || L.layout["text-size"] == null) continue;
+    const o = L.layout["text-size"]; let v = o;
+    if(typeof o === "number") v = o * k;
+    else if(Array.isArray(o) && o[0] === "interpolate") v = o.map((x, i) => (i >= 4 && i % 2 === 0 && typeof x === "number") ? x * k : x);
+    else if(Array.isArray(o) && o[0] === "step") v = o.map((x, i) => (i >= 2 && i % 2 === 0 && typeof x === "number") ? x * k : x);
+    else if(o && o.stops) v = Object.assign({}, o, { stops: o.stops.map(st => [st[0], st[1] * k]) });
+    try { map.setLayoutProperty(L.id, "text-size", v); } catch(e){}
+  }
+}
+function rdWms(layer, t){
+  const L = RD.layers.find(x => x.id === layer) || RD.layers[0];
+  return RD.W + L.wms + "/ows?service=WMS&version=1.3.0&request=GetMap&layers=" + L.wms + "&styles=&crs=EPSG:3857&bbox={bbox-epsg-3857}" +
+    "&width=512&height=512&format=image/png&transparent=true&time=" + new Date(t).toISOString();
+}
+/* lay the radar frames into a map, under the first label layer */
+function rdFrames(map, layer, shown){
+  const times = rdTimes(), st = map.getStyle(), lab = st.layers.find(l => l.type === "symbol");
+  for(let k = 0; k < RD.N; k++){
+    const id = "rad" + k;
+    if(map.getLayer(id)) map.removeLayer(id);
+    if(map.getSource(id)) map.removeSource(id);
+    map.addSource(id, { type: "raster", tiles: [rdWms(layer, times[k])], tileSize: 512 });
+    map.addLayer({ id, type: "raster", source: id, paint: { "raster-opacity": k === shown ? 0.85 : 0,
+      "raster-fade-duration": 0, "raster-opacity-transition": { duration: 0 } } }, lab ? lab.id : undefined);
+  }
   return times;
 }
-function rdShow(el, times, i){
-  const f = el.querySelectorAll(".rdF");
-  for(let k = 0; k < f.length; k++) f[k].style.visibility = k === i ? "visible" : "hidden";
-}
+function rdShowFrame(map, i){ for(let k = 0; k < RD.N; k++) if(map.getLayer("rad" + k)) map.setPaintProperty("rad" + k, "raster-opacity", k === i ? 0.85 : 0); }
 /* -- the card -- */
-const rdCard = { sec: $("phRadar"), map: $("phRadarMap"), key: "", times: [], i: 0, timer: 0, seen: false, at: 0 };
+const rdCard = { sec: $("phRadar"), map: null, el: $("phRadarMap"), key: "", times: [], i: 0, timer: 0, seen: false, at: 0, style: "" };
 function rdCardSync(){
   const ok = isPhone() && PLACE && rdUS();
   rdCard.sec.hidden = !ok;
   if(!ok || !rdCard.seen || document.hidden) return;
-  const r = rdCard.map.getBoundingClientRect();
-  const key = PLACE.lat.toFixed(3) + "," + PLACE.lng.toFixed(3) + "," + Math.round(r.width);
-  if(key === rdCard.key && Date.now() - rdCard.at < RD.STEP) return;
-  rdCard.key = key; rdCard.at = Date.now();
-  const v = { lat: PLACE.lat, lng: PLACE.lng, z: 7, w: r.width, h: r.height };
-  rdCard.times = rdPaint(rdCard.map, v, "bref");
-  rdCard.map.querySelector(".rdPin").style.cssText = "left:50%;top:50%";
-  rdCard.map.querySelector(".rdTime").textContent = "▶ " + rdClock(rdCard.times[0]) + " – " + rdClock(rdCard.times[RD.N - 1]);
-  clearTimeout(rdCard.timer); rdCard.i = RD.N - 1; rdLoop();
+  const key = PLACE.lat.toFixed(3) + "," + PLACE.lng.toFixed(3);
+  const style = rdStyle();
+  if(key === rdCard.key && style === rdCard.style && Date.now() - rdCard.at < RD.STEP) return;
+  rdLib().then(ok2 => {
+    if(!ok2){ rdCard.sec.hidden = true; return; }
+    const fresh = !rdCard.map || style !== rdCard.style;
+    rdCard.key = key; rdCard.at = Date.now();
+    const go = () => {
+      rdCard.times = rdFrames(rdCard.map, "bref", RD.N - 1);
+      rdCard.el.querySelector(".rdTime").textContent = "▶ " + rdClock(rdCard.times[0]) + " – " + rdClock(rdCard.times[RD.N - 1]);
+      clearTimeout(rdCard.timer); rdCard.i = RD.N - 1; rdLoop();
+    };
+    if(!rdCard.map){
+      rdCard.map = new maplibregl.Map({ container: rdCard.el.querySelector(".rdGL"), style: rdStyleUrl(style), center: [PLACE.lng, PLACE.lat], zoom: 6.6,
+        interactive: false, attributionControl: false, fadeDuration: 0 });
+      rdCard.pin = new maplibregl.Marker({ color: "#4fa3b5", scale: 0.7 }).setLngLat([PLACE.lng, PLACE.lat]).addTo(rdCard.map);
+      rdCard.map.on("style.load", () => { rdText(rdCard.map, RD.TEXT); go(); });
+    } else if(fresh){
+      rdCard.map.setStyle(rdStyleUrl(style));
+    } else {
+      rdCard.map.jumpTo({ center: [PLACE.lng, PLACE.lat] }); rdCard.pin.setLngLat([PLACE.lng, PLACE.lat]);
+      if(rdCard.map.isStyleLoaded()) go();
+    }
+    if(fresh && rdCard.map) { rdCard.map.jumpTo({ center: [PLACE.lng, PLACE.lat] }); rdCard.pin.setLngLat([PLACE.lng, PLACE.lat]); }
+    rdCard.style = style;
+  });
 }
 function rdLoop(){
-  rdShow(rdCard.map, rdCard.times, rdCard.i);
+  if(!rdCard.map) return;
+  rdShowFrame(rdCard.map, rdCard.i);
   const last = rdCard.i === RD.N - 1;
   rdCard.i = (rdCard.i + 1) % RD.N;
-  rdCard.timer = setTimeout(rdLoop, last ? 1800 : 420);
+  rdCard.timer = setTimeout(rdLoop, last ? 1800 : 500);
 }
-if("IntersectionObserver" in window && NJ_Q.get("brief") !== "1"){
-  new IntersectionObserver(es => { for(const e of es){ if(e.isIntersecting){ rdCard.seen = true; rdCardSync(); } } }, { rootMargin: "200px" }).observe(rdCard.sec);
+if(NJ_Q.get("brief") !== "1"){
+  if("IntersectionObserver" in window)
+    new IntersectionObserver(es => { for(const e of es){ if(e.isIntersecting){ rdCard.seen = true; rdCardSync(); } } }, { rootMargin: "200px" }).observe(rdCard.sec);
   setInterval(rdCardSync, 3e3); rdCardSync();
   document.addEventListener("visibilitychange", rdCardSync);
 }
 rdCard.sec.addEventListener("click", () => rdOpen());
 /* -- full screen -- */
-let rdEl = null, rdV = null, rdTimesF = [], rdI = 0, rdPlay = false, rdT = 0;
+let rdEl = null, rdMap = null, rdPin = null, rdTimesF = [], rdI = 0, rdPlay = false, rdT = 0;
 function rdOpen(){
   if(!PLACE) return;
+  rdLib().then(ok => { if(ok) rdOpen2(); });
+}
+function rdOpen2(){
   if(!rdEl){
     rdEl = document.createElement("div"); rdEl.id = "rdFull"; rdEl.hidden = true;
-    rdEl.innerHTML = '<div class="rdMap" id="rdMapF"><div class="rdPane"><img class="rdBase" alt=""><div class="rdFrames"></div><img class="rdRef" alt=""></div><div class="rdPin"></div></div>' +
-      '<div class="rdTop"><button class="rdB" id="rdBack">‹ <span></span></button><span style="flex:1"></span><button class="rdB" id="rdLayerBtn"></button></div>' +
-      '<div class="rdLay" id="rdLay" hidden></div>' +
+    rdEl.innerHTML = '<div class="rdGL" id="rdMapF"></div>' +
+      '<div class="rdTop"><button class="rdB" id="rdBack">‹ <span></span></button><span style="flex:1"></span>' +
+      '<button class="rdB" id="rdLayerBtn"></button><button class="rdB rdGear" id="rdGear" aria-label="Radar settings">' +
+      '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button></div>' +
+      '<div class="rdLay" id="rdLay" hidden></div><div class="rdLay" id="rdSet" hidden></div>' +
       '<div class="rdZoom"><button class="rdB" data-z="1">+</button><button class="rdB" data-z="-1">−</button><button class="rdB" data-z="0" aria-label="Back to the place">◎</button></div>' +
       '<div class="rdBot"><div class="rdRow"><button class="rdPlay" id="rdPlay">▶</button><input type="range" id="rdSlide" min="0" max="' + (RD.N - 1) + '"><span id="rdTimeF"></span></div>' +
-      '<div class="rdLeg" id="rdLeg"></div><div class="rdAttr">Radar: NOAA/NWS · Map: Esri</div></div>';
+      '<div class="rdLeg" id="rdLeg"></div><div class="rdAttr">Radar: NOAA/NWS · Map: OpenFreeMap, © OpenStreetMap</div></div>';
     document.body.appendChild(rdEl);
     $("rdBack").onclick = rdClose;
     $("rdPlay").onclick = () => rdSetPlay(!rdPlay);
     $("rdSlide").oninput = e => { rdSetPlay(false); rdI = +e.target.value; rdFrame(); };
     rdEl.querySelector(".rdZoom").onclick = e => {
-      const b = e.target.closest("[data-z]"); if(!b) return;
+      const b = e.target.closest("[data-z]"); if(!b || !rdMap) return;
       const d = +b.dataset.z;
-      if(d === 0) Object.assign(rdV, { lat: PLACE.lat, lng: PLACE.lng });
-      else rdV.z = Math.max(4, Math.min(11, rdV.z + d));
-      rdDraw();
+      if(d === 0) rdMap.easeTo({ center: [PLACE.lng, PLACE.lat], zoom: Math.max(rdMap.getZoom(), 7) });
+      else d > 0 ? rdMap.zoomIn() : rdMap.zoomOut();
     };
-    $("rdLayerBtn").onclick = () => { const m = $("rdLay"); m.hidden = !m.hidden; if(!m.hidden) rdMenu(); };
+    $("rdLayerBtn").onclick = () => { $("rdSet").hidden = true; const m = $("rdLay"); m.hidden = !m.hidden; if(!m.hidden) rdMenu(); };
+    $("rdGear").onclick = () => { $("rdLay").hidden = true; const m = $("rdSet"); m.hidden = !m.hidden; if(!m.hidden) rdSetMenu(); };
     $("rdLay").onclick = e => {
       const it = e.target.closest("[data-l]"); if(!it) return;
       const L = RD.layers.find(x => x.id === it.dataset.l);
       if(!L || L.soon || (L.paid && FREE)) return;          // greyed: does nothing
-      RD.layer = L.id; $("rdLay").hidden = true; rdDraw();
+      RD.layer = L.id; $("rdLay").hidden = true; rdLoadFrames();
     };
-    rdGestures($("rdMapF"));
-    addEventListener("resize", () => { if(rdEl && !rdEl.hidden) rdDraw(); });
+    $("rdSet").onclick = e => {
+      const it = e.target.closest("[data-s]"); if(!it) return;
+      try { localStorage.setItem("njord.radarStyle", it.dataset.s); } catch(err){}
+      $("rdSet").hidden = true;
+      rdMap.setStyle(rdStyleUrl(it.dataset.s));
+      rdCardSync();
+    };
   }
-  rdV = { lat: PLACE.lat, lng: PLACE.lng, z: 7 };
   rdEl.querySelector("#rdBack span").textContent = placeName(PLACE);
-  $("rdLay").hidden = true;
+  $("rdLay").hidden = true; $("rdSet").hidden = true;
   rdEl.hidden = false;
-  rdDraw(); rdSetPlay(true);
+  const c = [PLACE.lng, PLACE.lat];
+  if(!rdMap){
+    rdMap = new maplibregl.Map({ container: "rdMapF", style: rdStyleUrl(rdStyle()), center: c, zoom: 7, attributionControl: false, fadeDuration: 0, dragRotate: false, pitchWithRotate: false });
+    rdMap.touchZoomRotate.disableRotation();
+    rdPin = new maplibregl.Marker({ color: "#4fa3b5" }).setLngLat(c).addTo(rdMap);
+    rdMap.on("style.load", () => { rdText(rdMap, RD.TEXT); rdLoadFrames(); });
+  } else {
+    rdMap.resize(); rdMap.jumpTo({ center: c, zoom: 7 }); rdPin.setLngLat(c);
+    if(rdMap.isStyleLoaded()) rdLoadFrames();
+  }
+  rdSetPlay(true);
+}
+function rdLoadFrames(){
+  rdI = RD.N - 1;
+  rdTimesF = rdFrames(rdMap, RD.layer, rdI);
+  const L = RD.layers.find(x => x.id === RD.layer);
+  $("rdLayerBtn").textContent = L.name + " ▾";
+  $("rdLeg").innerHTML = L.dbz ? '<div class="rdBar">' + RD_LEG.map(c => '<i style="background:' + c + '"></i>').join("") + '</div><div class="rdLk"><span>Light</span><span>Moderate</span><span>Heavy</span><span>Severe</span></div>' : "";
+  rdFrame();
 }
 function rdClose(){ if(rdEl){ rdEl.hidden = true; rdSetPlay(false); } }
 function rdOpenNow(){ return !!(rdEl && !rdEl.hidden); }
@@ -1583,62 +1657,20 @@ function rdMenu(){
     return '<div data-l="' + L.id + '" class="' + (L.id === RD.layer ? "on " : "") + (lock ? "lk" : "") + '"><span>' + (L.paid && FREE ? LOCK_SVG : "") + esc(L.name) + '</span><small>' + esc(L.note) + '</small></div>';
   }).join("") + (FREE ? '<div class="rdFreeNote">More radar layers are in <b>Njord</b></div>' : "");
 }
-function rdDraw(){
-  const m = $("rdMapF"), r = m.getBoundingClientRect();
-  rdV.w = r.width; rdV.h = r.height;
-  m.querySelector(".rdPane").style.transform = "";
-  rdTimesF = rdPaint(m, rdV, RD.layer);
-  rdPin();
-  const L = RD.layers.find(x => x.id === RD.layer);
-  $("rdLayerBtn").textContent = L.name + " ▾";
-  $("rdLeg").innerHTML = L.dbz ? '<div class="rdBar">' + RD_LEG.map(c => '<i style="background:' + c + '"></i>').join("") + '</div><div class="rdLk"><span>Light</span><span>Moderate</span><span>Heavy</span><span>Severe</span></div>' : "";
-  rdI = RD.N - 1; rdFrame();
+function rdSetMenu(){
+  const cur = rdStyle();
+  $("rdSet").innerHTML = '<div class="rdHead">Map style</div>' + RD.STYLES.map(x =>
+    '<div data-s="' + x.id + '" class="' + (x.id === cur ? "on" : "") + '"><span>' + (x.id === cur ? "✓ " : "") + esc(x.name) + '</span><small>' + esc(x.note) + '</small></div>').join("");
 }
-function rdPin(dx, dy){
-  const r = rdRes(rdV.z), x = rdV.w/2 + (rdMX(PLACE.lng) - rdMX(rdV.lng))/r + (dx || 0), y = rdV.h/2 - (rdMY(PLACE.lat) - rdMY(rdV.lat))/r + (dy || 0);
-  const p = $("rdMapF").querySelector(".rdPin"); p.style.left = x + "px"; p.style.top = y + "px";
+function rdFrame(){
+  if(!rdMap) return;
+  rdShowFrame(rdMap, rdI); $("rdSlide").value = rdI;
+  $("rdTimeF").textContent = rdTimesF[rdI] ? rdClock(rdTimesF[rdI]) : "";
 }
-function rdFrame(){ rdShow($("rdMapF"), rdTimesF, rdI); $("rdSlide").value = rdI; $("rdTimeF").textContent = rdTimesF[rdI] ? rdClock(rdTimesF[rdI]) : ""; }
 function rdSetPlay(on){
   rdPlay = on; clearTimeout(rdT);
   if(rdEl) $("rdPlay").textContent = on ? "❚❚" : "▶";
-  if(on){ const tick = () => { rdI = (rdI + 1) % RD.N; rdFrame(); rdT = setTimeout(tick, rdI === RD.N - 1 ? 1600 : 450); }; rdT = setTimeout(tick, 450); }
-}
-/* drag to pan, pinch or double-tap to zoom; the pictures follow the finger,
-   then the view reloads for where it ended up */
-function rdGestures(m){
-  const pts = new Map(); let g = null, lastTap = 0;
-  const pane = () => m.querySelector(".rdPane");
-  m.addEventListener("pointerdown", e => {
-    m.setPointerCapture(e.pointerId); pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    if(pts.size === 1){
-      const now = Date.now();
-      if(now - lastTap < 300){ rdV.z = Math.min(11, rdV.z + 1); rdDraw(); lastTap = 0; return; }
-      lastTap = now;
-    }
-    const a = [...pts.values()];
-    g = { x0: a[0].x, y0: a[0].y, d0: a[1] ? Math.hypot(a[1].x - a[0].x, a[1].y - a[0].y) : 0, dx: 0, dy: 0, s: 1 };
-  });
-  m.addEventListener("pointermove", e => {
-    if(!g || !pts.has(e.pointerId)) return;
-    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    const a = [...pts.values()];
-    if(a.length >= 2 && g.d0){ g.s = Math.hypot(a[1].x - a[0].x, a[1].y - a[0].y) / g.d0; }
-    else { g.dx = a[0].x - g.x0; g.dy = a[0].y - g.y0; }
-    pane().style.transform = "translate(" + g.dx + "px," + g.dy + "px) scale(" + g.s + ")";
-    rdPin(g.dx, g.dy);
-  });
-  const end = e => {
-    pts.delete(e.pointerId);
-    if(!g || pts.size) return;
-    const d = g; g = null;
-    if(Math.abs(d.s - 1) > 0.15){ rdV.z = Math.max(4, Math.min(11, rdV.z + Math.round(Math.log2(d.s)) || (d.s > 1 ? 1 : -1))); rdDraw(); return; }
-    if(Math.abs(d.dx) + Math.abs(d.dy) < 5){ pane().style.transform = ""; rdPin(); return; }
-    const r = rdRes(rdV.z);
-    rdV.lng = rdLng(rdMX(rdV.lng) - d.dx * r); rdV.lat = rdLat(rdMY(rdV.lat) + d.dy * r);
-    rdDraw();
-  };
-  m.addEventListener("pointerup", end); m.addEventListener("pointercancel", end);
+  if(on){ const tick = () => { rdI = (rdI + 1) % RD.N; rdFrame(); rdT = setTimeout(tick, rdI === RD.N - 1 ? 1600 : 500); }; rdT = setTimeout(tick, 500); }
 }
 
 setInterval(() => render(false), 1000);
