@@ -399,3 +399,6 @@ html:not(.phone) #phPlacesH, html:not(.phone) #phPlaces { display: none; }
 .rdGear { padding: 8px 10px; display: flex; align-items: center; }
 .rdLay .rdHead { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: #8aa3b8; cursor: default; padding-bottom: 4px; }
 .rdTop, .rdZoom, .rdBot, .rdLay { z-index: 3; }
+/* build 40: the map library's own CSS (loaded later) sets .maplibregl-map to
+   position:relative, which undid inset:0 and left the map 0px tall - blank */
+#rdFull .rdGL, #phRadar .rdGL { position: absolute !important; inset: 0; width: 100%; height: 100%; }
