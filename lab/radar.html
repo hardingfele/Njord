@@ -38,7 +38,8 @@
     <option value="ptyp">Precipitation type (paid)</option>
   </select>
   <select id="src"><option value="wms">WMS (opengeo)</option><option value="ags">ArcGIS service</option></select>
-  <select id="bm"><option value="lightc">Light, more contrast</option><option value="light">Light map</option><option value="street">Streets</option><option value="topo">Terrain</option><option value="dark">Dark map</option></select>
+  <select id="bm"><option value="street">Streets</option><option value="lightc">Light, more contrast</option><option value="light">Light map</option><option value="topo">Terrain</option><option value="dark">Dark map</option></select>
+  <select id="txt"><option value="2">Text: large</option><option value="2.8">Text: larger</option><option value="1.4">Text: medium</option><option value="1">Text: small (now)</option></select>
   <button id="loc">My location</button>
 </div>
 <div id="zoom"><button id="zin">+</button><button id="zout">−</button></div>
@@ -66,7 +67,13 @@ const res = () => 2 * Math.PI * R / 256 / Math.pow(2, z);    // metres per CSS p
 function bbox(){ const cx = mx(lng), cy = my(lat), r = res(), w = W() * r / 2, h = H() * r / 2; return [cx - w, cy - h, cx + w, cy + h]; }
 const dpr = () => Math.min(2, devicePixelRatio || 1);
 const size = () => Math.round(W() * dpr()) + "," + Math.round(H() * dpr());
-function esriUrl(svc){ return ESRI + svc + "/MapServer/export?bbox=" + bbox().join(",") + "&bboxSR=3857&imageSR=3857&size=" + size() + "&format=png32&transparent=true&f=image"; }
+/* the map's labels are drawn at a fixed pixel size, so asking for a smaller
+   picture and stretching it makes town names bigger (2026-11-18: unreadable) */
+function esriUrl(svc){
+  const k = +$("txt").value || 1, d = Math.max(1, dpr() / k);
+  const sz = Math.round(W() * d) + "," + Math.round(H() * d);
+  return ESRI + svc + "/MapServer/export?bbox=" + bbox().join(",") + "&bboxSR=3857&imageSR=3857&size=" + sz + "&format=png32&transparent=true&f=image";
+}
 function radarUrl(t){
   const b = bbox().join(","), layer = $("layer").value;
   if($("src").value === "ags" && layer === "bref")
@@ -121,7 +128,7 @@ $("play").onclick = () => { playing = !playing; $("play").textContent = playing 
 $("slider").oninput = e => { idx = +e.target.value; show(); };
 $("zin").onclick = () => { z = Math.min(11, z + 1); draw(); };
 $("zout").onclick = () => { z = Math.max(4, z - 1); draw(); };
-$("layer").onchange = draw; $("src").onchange = draw; $("bm").onchange = draw;
+$("layer").onchange = draw; $("src").onchange = draw; $("bm").onchange = draw; $("txt").onchange = draw;
 $("loc").onclick = () => navigator.geolocation.getCurrentPosition(p => { lat = p.coords.latitude; lng = p.coords.longitude; home = { lat, lng }; draw(); placeMe(); }, e => msg("Location: " + e.message));
 /* drag to pan; the pictures follow the finger, then reload for the new view */
 let drag = null;
