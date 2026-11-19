@@ -70,7 +70,7 @@ const size = () => Math.round(W() * dpr()) + "," + Math.round(H() * dpr());
 /* the map's labels are drawn at a fixed pixel size, so asking for a smaller
    picture and stretching it makes town names bigger (2026-11-18: unreadable) */
 function esriUrl(svc){
-  const k = +$("txt").value || 1, d = Math.max(1, dpr() / k);
+  const k = +$("txt").value || 1, d = Math.max(0.5, dpr() / k);
   const sz = Math.round(W() * d) + "," + Math.round(H() * d);
   return ESRI + svc + "/MapServer/export?bbox=" + bbox().join(",") + "&bboxSR=3857&imageSR=3857&size=" + sz + "&format=png32&transparent=true&f=image";
 }
