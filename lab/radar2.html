@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>Njord lab · Radar on a vector map</title>
+<!-- Njord lab v6 (2026-11-18): the way NOAA Weather Unofficial does it - a
+     vector map whose roads and town names are drawn by the phone itself, so
+     text is crisp at any size - with NWS radar laid over it.
+     Map: MapLibre GL JS (open source) + OpenFreeMap tiles (OpenStreetMap
+     data; free, no key, commercial use allowed). Radar: NWS opengeo WMS. -->
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<style>
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:#e9eef0;color:#e8eef5;font:13px/1.3 system-ui,sans-serif;overflow:hidden}
+  #map{position:absolute;inset:0}
+  .bar{position:absolute;left:10px;right:10px;background:rgba(15,26,46,.92);border-radius:14px;padding:8px 10px;box-shadow:0 6px 24px rgba(0,0,0,.35);z-index:2}
+  #top{top:calc(10px + env(safe-area-inset-top));display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+  #bot{bottom:calc(10px + env(safe-area-inset-bottom))}
+  select,button{background:#1b2636;border:1px solid #2c3d50;color:#e8eef5;border-radius:9px;padding:7px 9px;font:inherit}
+  .row{display:flex;gap:8px;align-items:center}
+  input[type=range]{flex:1}
+  #time{min-width:70px;text-align:right;font-variant-numeric:tabular-nums}
+  #msg{font-size:11.5px;color:#8aa3b8;margin-top:5px;white-space:pre-wrap}
+  .legend{display:flex;height:8px;border-radius:4px;overflow:hidden;margin-top:6px}
+  .legend i{flex:1}
+  .lk{display:flex;justify-content:space-between;font-size:10.5px;color:#8aa3b8}
+  .maplibregl-ctrl-bottom-right{bottom:120px}
+</style></head><body>
+<div id="map"></div>
+<div class="bar" id="top">
+  <select id="style">
+    <option value="liberty">Map: Liberty (colour)</option>
+    <option value="positron">Map: Positron (light)</option>
+    <option value="bright">Map: Bright</option>
+  </select>
+  <select id="txt"><option value="1.3">Text 1.3×</option><option value="1.5">Text 1.5×</option><option value="1">Text 1×</option><option value="1.75">Text 1.75×</option></select>
+  <button id="loc">My location</button><span style="font-size:11px;color:#8aa3b8">lab v6</span>
+</div>
+<div class="bar" id="bot">
+  <div class="row"><button id="play">▶</button><input type="range" id="slider" min="0" max="11" value="11"><span id="time">–</span></div>
+  <div class="legend" id="leg"></div><div class="lk"><span>Light</span><span>Moderate</span><span>Heavy</span><span>Severe</span></div>
+  <div id="msg"></div>
+</div>
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const msg = t => { $("msg").textContent = t; };
+const N = 12, STEP = 10 * 60e3;
+const LEG = ["#04e9e7","#019ff4","#0300f4","#02fd02","#01c501","#008e00","#fdf802","#e5bc00","#fd9500","#fd0000","#d40000","#bc0000","#f800fd","#9854c6"];
+$("leg").innerHTML = LEG.map(c => '<i style="background:' + c + '"></i>').join("");
+if(!window.maplibregl){ msg("Map library didn't load (unpkg.com)."); throw new Error("no maplibre"); }
+const q = new URLSearchParams(location.search);
+let center = [q.get("lng") ? +q.get("lng") : -95.6, q.get("lat") ? +q.get("lat") : 45.315];
+let times = [], idx = N - 1, playing = false, timer = 0;
+const map = new maplibregl.Map({ container: "map", style: "https://tiles.openfreemap.org/styles/liberty", center, zoom: 7, attributionControl: { compact: true } });
+map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
+const me = new maplibregl.Marker({ color: "#4fa3b5" }).setLngLat(center).addTo(map);
+/* make every label bigger by a factor: plain numbers and the outputs of
+   zoom curves are multiplied (a curve can't simply be wrapped in "*") */
+const orig = new Map();
+function scaleText(k){
+  for(const L of map.getStyle().layers){
+    if(L.type !== "symbol" || !L.layout || L.layout["text-size"] == null) continue;
+    if(!orig.has(L.id)) orig.set(L.id, JSON.parse(JSON.stringify(L.layout["text-size"])));
+    const o = orig.get(L.id);
+    let v = o;
+    if(typeof o === "number") v = o * k;
+    else if(Array.isArray(o) && o[0] === "interpolate") v = o.map((x, i) => (i >= 4 && i % 2 === 0 && typeof x === "number") ? x * k : x);
+    else if(Array.isArray(o) && o[0] === "step") v = o.map((x, i) => (i >= 2 && i % 2 === 0 && typeof x === "number") ? x * k : x);
+    else if(o && o.stops) v = Object.assign({}, o, { stops: o.stops.map(s => [s[0], s[1] * k]) });
+    try { map.setLayoutProperty(L.id, "text-size", v); } catch(e){}
+  }
+}
+function firstSymbol(){ const s = map.getStyle().layers.find(l => l.type === "symbol"); return s && s.id; }
+function wms(t){
+  return "https://opengeo.ncep.noaa.gov/geoserver/conus/conus_bref_qcd/ows?service=WMS&version=1.3.0&request=GetMap&layers=conus_bref_qcd&styles=" +
+    "&crs=EPSG:3857&bbox={bbox-epsg-3857}&width=512&height=512&format=image/png&transparent=true&time=" + new Date(t).toISOString();
+}
+function addRadar(){
+  const end = Math.floor((Date.now() - 4 * 60e3) / STEP) * STEP;
+  times = Array.from({ length: N }, (_, k) => end - (N - 1 - k) * STEP);
+  const below = firstSymbol();   // radar goes under the labels, so town names stay readable
+  times.forEach((t, k) => {
+    const id = "rad" + k;
+    if(map.getLayer(id)) map.removeLayer(id);
+    if(map.getSource(id)) map.removeSource(id);
+    map.addSource(id, { type: "raster", tiles: [wms(t)], tileSize: 512, attribution: "Radar: NOAA/NWS" });
+    map.addLayer({ id, type: "raster", source: id, paint: { "raster-opacity": k === idx ? 0.85 : 0, "raster-fade-duration": 0, "raster-opacity-transition": { duration: 0 } } }, below);
+  });
+  show();
+}
+function show(){
+  for(let k = 0; k < N; k++) if(map.getLayer("rad" + k)) map.setPaintProperty("rad" + k, "raster-opacity", k === idx ? 0.85 : 0);
+  $("slider").value = idx;
+  $("time").textContent = times[idx] ? new Date(times[idx]).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "–";
+}
+function step(){ idx = (idx + 1) % N; show(); timer = setTimeout(step, idx === N - 1 ? 1500 : 500); }
+$("play").onclick = () => { playing = !playing; $("play").textContent = playing ? "❚❚" : "▶"; clearTimeout(timer); if(playing) step(); };
+$("slider").oninput = e => { idx = +e.target.value; show(); };
+map.on("style.load", () => { orig.clear(); scaleText(+$("txt").value); addRadar(); msg("Map: OpenFreeMap · OpenStreetMap. Radar: NWS, last 2 hours."); });
+map.on("error", e => msg("Error: " + (e && e.error && e.error.message || e)));
+$("style").onchange = () => map.setStyle("https://tiles.openfreemap.org/styles/" + $("style").value);
+$("txt").onchange = () => scaleText(+$("txt").value);
+$("loc").onclick = () => navigator.geolocation.getCurrentPosition(p => {
+  center = [p.coords.longitude, p.coords.latitude]; me.setLngLat(center); map.flyTo({ center, zoom: 8 });
+}, e => msg("Location: " + e.message));
+setInterval(() => { if(!document.hidden && map.isStyleLoaded()) addRadar(); }, STEP);
+</script></body></html>
