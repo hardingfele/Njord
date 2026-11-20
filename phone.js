@@ -1362,8 +1362,8 @@ function briefOut(){
   const win = NJ_Q.get("win") || (p.hour < 11 ? "morning" : p.hour < 16 ? "midday" : "evening");
   const p0 = briefParts(0), p1 = WX.days[1] ? briefParts(1) : {}, tom = WX.days[1] ? weekdayName(WX.days[1].date) : "";
   let lines;
-  if(win === "morning") lines = [["Today", p0.Today]];
-  else if(win === "midday") lines = [["Today", p0.Today], ["Tonight", p0.Tonight]];
+  /* build 41: during the day, Today and Tonight (morning used to be Today only) */
+  if(win === "morning" || win === "midday") lines = [["Today", p0.Today], ["Tonight", p0.Tonight]];
   else lines = [["Tonight", p0.Tonight], [tom, p1[tom]]];
   lines = lines.filter(l => l[1]);
   if(!lines.length){ const k = Object.keys(p0)[0]; if(k) lines = [[k, p0[k]]]; }
