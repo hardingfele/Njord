@@ -143,7 +143,7 @@ function render(force){
   if(!isPhone()) return;
   if(WX !== lastWX){ lastWX = WX; wxGen++; }
   const p = zonedParts(new Date(), PLACE.tz);
-  const hs = [PLACE.lat, PLACE.lng, p.hour, p.minute, wxGen, WX_STATE, CONFIG.units, CONFIG.clock,
+  const hs = [PLACE.lat, PLACE.lng, p.hour, p.minute, wxGen, WX_STATE, CONFIG.units, CONFIG.clock, phRefreshing, WX_FETCHED,
               SCENE && SCENE.cls && SCENE.cls.label, ALERTS.map(a => a.id).join(",")].join("|");
   if(force || hs !== heroSig){ heroSig = hs; renderHero(); }
   /* sun/moon arcs and the aurora note move on their own, slower clock */
@@ -310,6 +310,34 @@ function placeName(p){
     .replace(/^Township of (.+)$/i, "$1 Township").replace(/^(.+) Twp$/i, "$1 Township")
     .replace(/^(City|Town|Village|Borough) of /i, "");
 }
+/* ---- Updated + refresh (app build 42; Njord and the web app, not Free) ----
+   When the forecast was fetched, and a tap to fetch it again now - skipping
+   the 10-minute reuse, the saved station report and the aurora model. */
+let phRefreshing = false, phRefreshT = 0;
+function updatedLine(){
+  if(FREE) return "";
+  const at = WX_SRC === "cache" ? WX_SRC_AT : WX_FETCHED;
+  if(!at) return "";
+  const p = zonedParts(new Date(at), PLACE.tz);
+  const age = Date.now() - at, day = age > 20*3600e3 ? new Date(at).toLocaleDateString([], { weekday: "short", timeZone: PLACE.tz }) + " " : "";
+  return '<button class="hup' + (phRefreshing ? " spin" : "") + '" id="phUpd" aria-label="Refresh the forecast">' +
+    (phRefreshing ? "Updating\u2026" : (WX_SRC === "cache" ? "Saved forecast from " : "Updated ") + esc(day + fmtTime(p.hour*60 + p.minute))) +
+    '<svg viewBox="0 0 24 24" width="1.05em" height="1.05em" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M20 12a8 8 0 1 1-2.6-5.9"/><path d="M20 4v5h-5"/></svg></button>';
+}
+function phRefresh(){
+  if(FREE || phRefreshing) return;
+  phRefreshing = true; render(true);
+  try { STORE.set(wxCacheKey(), "null"); } catch(e){}
+  try { JCACHE.clear(); } catch(e){}
+  const before = WX_FETCHED;
+  try { loadWeather(); } catch(e){}
+  try { if(typeof resetAurora === "function"){ resetAurora(); loadAurora(); } } catch(e){}
+  clearInterval(phRefreshT);
+  const t0 = Date.now();
+  phRefreshT = setInterval(() => {
+    if(WX_FETCHED !== before || Date.now() - t0 > 20000){ clearInterval(phRefreshT); phRefreshing = false; render(true); }
+  }, 250);
+}
 function renderHero(){
   const p = zonedParts(new Date(), PLACE.tz);
   const nm = placeName(PLACE);
@@ -329,7 +357,7 @@ function renderHero(){
     h += '<div class="ht">' + WX.temp + deg + '</div>' + alertPill() +
          '<div class="hc">' + esc(label) + '</div>' +
          '<div class="hs">Feels like ' + WX.feels + deg + (d0 ? '<span class="dotsep"></span>H ' + d0.hi + deg + '&ensp;L ' + d0.lo + deg : '') + '</div>' +
-         '<div class="hs hwl">' + wind + '</div>';
+         '<div class="hs hwl">' + wind + '</div>' + updatedLine();
   }
   $("phHero").innerHTML = h;
   mini.innerHTML = '<span class="mn">' + esc(placeName(PLACE)) + '</span>' +
@@ -988,6 +1016,7 @@ ph.addEventListener("scroll", () => {
 /* the sky: a tap goes to the scene (warning banner, aurora badge), a sideways
    swipe moves between saved places, and anything else scrolls the sheet */
 const top = $("phTop");
+$("phHero").addEventListener("click", e => { if(e.target.closest("#phUpd")){ e.stopPropagation(); phRefresh(); } });
 let tx0 = 0, ty0 = 0, tt0 = 0;
 top.addEventListener("touchstart", e => { const t = e.touches[0]; tx0 = t.clientX; ty0 = t.clientY; tt0 = Date.now(); }, { passive: true });
 top.addEventListener("touchend", e => {
