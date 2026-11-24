@@ -409,3 +409,35 @@ html:not(.phone) #phPlacesH, html:not(.phone) #phPlaces { display: none; }
 .hup svg { flex: none; }
 .hup.spin svg { animation: hupSpin 1s linear infinite; }
 @keyframes hupSpin { to { transform: rotate(360deg); } }
+
+/* app build 48: one-line note for locked things in Njord Free */
+#njNote { position: fixed; left: 50%; bottom: 28px; transform: translate(-50%, 12px); max-width: 86vw; z-index: 9500;
+  background: rgba(15,26,46,.96); color: #e8eef8; border: 1px solid rgba(120,224,242,.35); border-radius: 12px;
+  padding: 10px 14px; font: 500 13.5px/1.35 Figtree, system-ui, sans-serif; text-align: center;
+  opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; }
+#njNote.on { opacity: 1; transform: translate(-50%, 0); }
+
+/* app build 49: developer switch in About */
+#devBox { margin: 10px 0 4px; padding: 10px 12px; border: 1px dashed rgba(242,196,109,.45); border-radius: 12px; }
+#devBox .devH { font: 600 12px/1 Figtree, system-ui, sans-serif; letter-spacing: .08em; text-transform: uppercase; color: #f2c46d; margin-bottom: 8px; }
+#devBox .devRow { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 14.5px; color: #e8eef8; }
+#devBox .devRow input { width: 20px; height: 20px; accent-color: #f2c46d; }
+#devBox .devNote { margin-top: 6px; font-size: 12px; color: #9fb0c8; }
+
+/* app build 49: forecast-source notice under the hero */
+.srcNote { pointer-events: auto; margin: 10px 0 0; max-width: 340px; padding: 8px 12px; border-radius: 12px;
+  background: rgba(20,27,41,.78); border: 1px solid rgba(242,196,109,.5); color: #f3e2bd;
+  font: 500 13px/1.35 Figtree, system-ui, sans-serif; text-align: left; }
+
+/* app build 49: radar status note (card and full map) */
+.rdNote { margin-top: 8px; padding: 7px 10px; border-radius: 10px; background: rgba(20,27,41,.85);
+  border: 1px solid rgba(242,196,109,.5); color: #f3e2bd; font: 500 12.5px/1.35 Figtree, system-ui, sans-serif; }
+.rdBot .rdNote { margin: 0 0 8px; }
+
+/* build 50: radar settings panel - speed buttons, layer name */
+.rdSpd { display: flex; gap: 6px; padding: 4px 10px 10px; }
+.rdSpd button { flex: 1; padding: 8px 0; border-radius: 10px; border: 1px solid rgba(255,255,255,.18); background: rgba(255,255,255,.06);
+  color: inherit; font: 600 13.5px/1 Figtree, system-ui, sans-serif; }
+.rdSpd button.on { background: rgba(120,224,242,.22); border-color: rgba(120,224,242,.7); }
+.rdLayName { font: 600 12.5px/1.2 Figtree, system-ui, sans-serif; opacity: .85; margin: 2px 0 4px; }
+#rdSet { max-height: 70vh; overflow-y: auto; }

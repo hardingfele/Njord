@@ -307,9 +307,13 @@
     <div id="credits">
       <div id="appVer" class="cr-by" hidden></div>
       <div class="cr-by" style="margin-bottom:4px">&copy; 2026 Aaran. All rights reserved.</div>
-      Weather, geocoding, elevation and satellite data by <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo.com</a> (CC BY 4.0).
+      <span class="cr-full">Weather, geocoding, elevation and satellite data by <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo.com</a> (CC BY 4.0).
       Terrain from Copernicus DEM GLO-90; ground type from Copernicus Climate Change Service / ERA5 information.
-      US alerts from the National Weather Service; aurora data from NOAA SWPC.
+      US alerts from the National Weather Service; aurora data from NOAA SWPC.</span>
+      <span class="cr-free" hidden>Forecasts and alerts from the National Weather Service; aurora data from NOAA SWPC.
+      Places and population from the U.S. Census Bureau.
+      Terrain: United States 3DEP (formerly NED) and global GMTED2010 and SRTM terrain data courtesy of the U.S. Geological Survey,
+      via Mapzen Terrain Tiles on AWS.</span>
       Flags by <a href="https://flagpedia.net/" target="_blank" rel="noopener">Flagpedia.net</a>.
       Holidays from <a href="https://date.nager.at/" target="_blank" rel="noopener">Nager.Date</a>.
       Not affiliated with or endorsed by NOAA or the National Weather Service. Forecasts are for general interest only.
@@ -690,6 +694,9 @@ const SETTING_KEYS = ["units","windMS","clock24","showHourly","showCards","showM
   try {
     const j = JSON.parse(STORE.get("weather.settings") || "null");
     if(j) for(const k of SETTING_KEYS) if(k in j && k !== "testMode") CONFIG[k] = j[k];
+    /* build 50: rain on glass back on for everyone, once (it can still be turned off) */
+    if(!STORE.get("weather.glassOn.v50")){ CONFIG.rainOnGlass = true; STORE.set("weather.glassOn.v50", "1");
+      if(j){ j.rainOnGlass = true; STORE.set("weather.settings", JSON.stringify(j)); } }
     /* test mode is per session: a wallpaper should always start as a wallpaper */
     const h = JSON.parse(STORE.get("weather.home") || "null");
     if(h && isFinite(h.lat) && isFinite(h.lng)) CONFIG.home = h;
@@ -1014,6 +1021,13 @@ let WX_WHY = "", WX_RETRY_AT = 0, WX_FETCHED = 0;
 /* where the forecast on screen came from: "om" Open-Meteo, "nws" the NOAA
    backup (US only), "cache" the last good forecast saved in this browser */
 let WX_SRC = "om", WX_SRC_AT = 0;
+/* Njord Free (app build 48) runs on NOAA alone: no Open-Meteo forecast */
+const NJ_FREE = (() => { try { return !!(window.NjordAndroid && NjordAndroid.isFree && NjordAndroid.isFree()); }
+                         catch(e){ return false; } })() || /[?&]free=1\b/.test(location.search);
+if(NJ_FREE) try {             // Free's About credits name the sources it actually uses
+  document.querySelectorAll("#credits .cr-full").forEach(e => e.hidden = true);
+  document.querySelectorAll("#credits .cr-free").forEach(e => e.hidden = false);
+} catch(e){}
 let OM_BLOCK_UNTIL = 0, OM_BLOCK_WHY = "";
 const realNow = () => Date.now() - TIME_OFFSET;          // rate limits run on the real clock
 const omBlocked = () => realNow() < OM_BLOCK_UNTIL;
@@ -1069,18 +1083,10 @@ let WX = null, WX_LIVE = null, WX_STATE = "loading", wxTimer = null, wxFails = 0
 const OVERRIDE = {};
 const RIG = { autoSynth: true, synthetic: false };
 let PLAY = 0, PLAY_AT = 0, PLAY_SYNC = 0;
-function loadWeather(){
-  /* A forecast fetched for this place in the last 10 minutes is still
-     current: use it instead of asking Open-Meteo again. */
-  try {
-    const j = JSON.parse(STORE.get(wxCacheKey()) || "null");
-    if(j && j.src === "om" && realNow() - j.at < 10*60000){
-      const c = loadSavedForecast();
-      if(c){ acceptWX(c.wx, "om", c.at); WX_FETCHED = c.at; wxFails = 0; WX_WHY = ""; return; }
-    }
-  } catch(e){}
+/* app build 51: Open-Meteo's forecast for a place, in the shape the rest of the
+   file uses (days follow the NWS day/night rule, see dayNight) */
+function omForecast(P){
   const imp = CONFIG.units === "imperial";
-  const P = PLACE, stamp = P.lat + "," + P.lng;
   const u = "https://api.open-meteo.com/v1/forecast"
     + "?latitude=" + P.lat + "&longitude=" + P.lng
     + "&current=temperature_2m,apparent_temperature,relative_humidity_2m,is_day,"
@@ -1096,11 +1102,10 @@ function loadWeather(){
     + "&temperature_unit=" + (imp ? "fahrenheit" : "celsius")
     + "&wind_speed_unit="  + (imp ? "mph" : windMS() ? "ms" : "kmh")
     + "&precipitation_unit=" + (imp ? "inch" : "mm");
-  omFetch(u).then(j => {
+  return omFetch(u).then(j => {
     if(!j || !j.current) throw { reason: "reply had no current conditions" };
-    if(PLACE.lat + "," + PLACE.lng !== stamp) return;      // moved mid-flight
     const c = j.current, d = j.daily || {}, h = j.hourly || {};
-    WX = {
+    const wx = {
       temp   : Math.round(c.temperature_2m),
       feels  : Math.round(c.apparent_temperature),
       humid  : Math.round(c.relative_humidity_2m),
@@ -1136,6 +1141,27 @@ function loadWeather(){
       })),
       at: Date.now()
     };
+
+    dayNight(wx);
+    return wx;
+  });
+}
+function loadWeather(){
+  if(NJ_FREE){ loadWeatherFree(); return; }
+  if(usPlace(PLACE)){ loadWeatherUS(); return; }      // build 51: NOAA first in the US
+  /* A forecast fetched for this place in the last 10 minutes is still
+     current: use it instead of asking Open-Meteo again. */
+  try {
+    const j = JSON.parse(STORE.get(wxCacheKey()) || "null");
+    if(j && j.src === "om" && realNow() - j.at < 10*60000){
+      const c = loadSavedForecast();
+      if(c){ acceptWX(c.wx, "om", c.at); WX_FETCHED = c.at; wxFails = 0; WX_WHY = ""; return; }
+    }
+  } catch(e){}
+  const P = PLACE, stamp = P.lat + "," + P.lng;
+  omForecast(P).then(wx => {
+    if(PLACE.lat + "," + PLACE.lng !== stamp) return;      // moved mid-flight
+    WX = wx;
     saveForecast(WX, "om");
     acceptWX(WX, "om");
     wxFails = 0; WX_WHY = ""; WX_RETRY_AT = 0;
@@ -1177,6 +1203,101 @@ function loadWeather(){
     lastDraw = 0;
     try { if(typeof syncRig === "function") syncRig(); } catch(e){}
   }
+}
+/* app build 51: Njord in the US. NOAA's forecast for the days it covers (about 7),
+   Open-Meteo's for the days after. If NOAA can't be reached, Open-Meteo alone
+   (with a note) and NOAA is asked again in 30 min; if both fail, the saved one. */
+function loadWeatherUS(){
+  const P = PLACE, stamp = P.lat + "," + P.lng;
+  try {
+    const j = JSON.parse(STORE.get(wxCacheKey()) || "null");
+    if(j && j.src === "nws" && realNow() - j.at < 10*60000){
+      const c = loadSavedForecast();
+      if(c){ acceptWX(c.wx, "nws", c.at); WX_FETCHED = c.at; wxFails = 0; WX_WHY = ""; return; }
+    }
+  } catch(e){}
+  NWS_STATE = "loading";
+  const err = e => ({ err: e });
+  Promise.all([nwsForecast(P).catch(err), omForecast(P).catch(err)]).then(([n, o]) => {
+    if(PLACE.lat + "," + PLACE.lng !== stamp) return;
+    clearTimeout(wxTimer);
+    if(!n.err){
+      NWS_STATE = "ok";
+      const wx = o.err ? n : extendWX(n, o);
+      saveForecast(wx, "nws"); acceptWX(wx, "nws");
+      wxFails = 0; WX_WHY = ""; WX_RETRY_AT = 0;
+      return;
+    }
+    NWS_STATE = "failed: " + errText(n.err);
+    if(!o.err){
+      saveForecast(o, "om"); acceptWX(o, "om");
+      wxFails = 0; WX_WHY = ""; WX_RETRY_AT = realNow() + 30*60000;
+      wxTimer = setTimeout(loadWeather, 30*60000);
+      return;
+    }
+    wxFails++;
+    WX_WHY = String(NWS_STATE).replace(/^failed: /, "");
+    WX_STATE = WX_LIVE ? "stale" : "offline";
+    if(!WX_LIVE || WX_SRC === "cache"){ const c = loadSavedForecast(); if(c) acceptWX(c.wx, "cache", c.at); }
+    const wait = [15000, 45000, 120000, 300000][wxFails - 1] || 15*60000;
+    WX_RETRY_AT = realNow() + wait;
+    wxTimer = setTimeout(loadWeather, wait);
+    lastDraw = 0;
+  });
+}
+/* NOAA's days, then Open-Meteo's days (and hours) after the last one NOAA has */
+function extendWX(n, o){
+  const lastD = n.days.length ? n.days[n.days.length - 1].date : "";
+  const lastH = n.hours.length ? n.hours[n.hours.length - 1].time : "";
+  return Object.assign({}, n, {
+    days : n.days.concat(o.days.filter(d => d.date > lastD)).slice(0, 10),
+    hours: n.hours.concat(o.hours.filter(h => h.time > lastH)),
+    ext  : true });
+}
+const usPlace = P => P.cc === "US" || (!P.cc && P.lat > 17 && P.lat < 72 && P.lng < -64 && P.lng > -180);
+/* app build 51: days follow the National Weather Service's day and night.
+   High: 7 AM-7 PM. Low: the night after, 7 PM to 8 AM. Chance of rain/snow:
+   6 AM to 6 AM next morning, so overnight snow stays on the day it starts.
+   A day whose night isn't in the data keeps its own low (marked loPart). */
+function dayNight(wx){
+  const H = wx.hours || [], by = new Map();
+  for(const h of H){ const d = h.time.slice(0, 10); if(!by.has(d)) by.set(d, []); by.get(d).push(h); }
+  const hr = h => +h.time.slice(11, 13);
+  const nextDate = d => { const t = new Date(d + "T12:00:00Z"); t.setUTCDate(t.getUTCDate() + 1); return t.toISOString().slice(0, 10); };
+  for(const d of wx.days || []){
+    const mine = by.get(d.date) || [], nx = by.get(nextDate(d.date)) || [];
+    const dayH = mine.filter(h => hr(h) >= 7 && hr(h) <= 19);
+    const nightH = mine.filter(h => hr(h) >= 19).concat(nx.filter(h => hr(h) <= 8));
+    const popH = mine.filter(h => hr(h) >= 6).concat(nx.filter(h => hr(h) < 6));
+    if(dayH.length) d.hi = Math.max(...dayH.map(h => h.temp));
+    if(nightH.length >= 8){ d.lo = Math.min(...nightH.map(h => h.temp)); d.loPart = false; } else d.loPart = true;
+    if(popH.length && popH.some(h => h.pop != null)) d.pop = Math.max(...popH.map(h => h.pop || 0));
+  }
+  return wx;
+}
+/* Njord Free: NOAA's forecast is the forecast. A NOAA forecast fetched in the
+   last 10 minutes is reused; if NOAA can't be reached, the saved one shows
+   (labelled with its age) and it tries again soon. */
+function loadWeatherFree(){
+  const P = PLACE, stamp = P.lat + "," + P.lng;
+  try {
+    const j = JSON.parse(STORE.get(wxCacheKey()) || "null");
+    if(j && j.src === "nws" && realNow() - j.at < 10*60000){
+      const c = loadSavedForecast();
+      if(c){ acceptWX(c.wx, "nws", c.at); WX_FETCHED = c.at; wxFails = 0; WX_WHY = ""; return; }
+    }
+  } catch(e){}
+  backupForecast(stamp).then(ok => {
+    if(PLACE.lat + "," + PLACE.lng !== stamp) return;
+    if(WX_SRC === "nws" && NWS_STATE === "ok"){ wxFails = 0; WX_WHY = ""; WX_RETRY_AT = 0; return; }
+    wxFails++;
+    WX_WHY = String(NWS_STATE).replace(/^failed: /, "");
+    WX_STATE = WX_LIVE ? "stale" : "offline";
+    const wait = [15000, 45000, 120000, 300000][wxFails - 1] || 15*60000;
+    WX_RETRY_AT = realNow() + wait;
+    clearTimeout(wxTimer); wxTimer = setTimeout(loadWeather, wait);
+    lastDraw = 0;
+  });
 }
 /* Shared by every source: make a forecast the live one. */
 function acceptWX(wx, src, at){
@@ -1263,21 +1384,61 @@ function feelsF(tF, mph, rh){
                                    - 5.481717e-2*rh*rh + 1.22874e-3*tF*tF*rh + 8.5282e-4*tF*rh*rh - 1.99e-6*tF*tF*rh*rh;
   return tF;
 }
-function nwsHourlyToWX(j){
+/* Njord Free (app build 48): NOAA's raw gridded forecast ("forecastGridData")
+   fills in what the hourly text forecast leaves out - feels-like, gusts, sky
+   cover and rain/snow amounts - so Free can run on NOAA alone. Values come
+   as UTC intervals ("2026-11-24T15:00:00+00:00/PT3H") in metric units;
+   amounts are totals over the interval and are spread evenly over its hours. */
+function gridSeries(g, name){
+  const s = g && g.properties && g.properties[name];
+  return ((s && s.values) || []).map(v => {
+    const [start, dur] = String(v.validTime).split("/");
+    const m = /P(?:(\d+)D)?T?(?:(\d+)H)?/.exec(dur || "");
+    const hrs = (+(m && m[1]) || 0)*24 + (+(m && m[2]) || 0) || 1;
+    const t0 = Date.parse(start);
+    return { t0, t1: t0 + hrs*3600e3, hrs, v: v.value };
+  });
+}
+function gridAt(series, ms){
+  for(const x of series) if(ms >= x.t0 && ms < x.t1) return x;
+  return null;
+}
+function nwsHourlyToWX(j, g){
   const per = (j && j.properties && j.properties.periods) || [];
   if(!per.length) throw { reason: "NOAA hourly had no periods" };
   const metric = CONFIG.units === "metric";
   const T = f => metric ? (f - 32)*5/9 : f, V = m => metric ? m*(windMS() ? 0.44704 : 1.609344) : m;
+  const G = {};
+  for(const n of ["apparentTemperature","skyCover","windGust","quantitativePrecipitation","snowfallAmount","relativeHumidity"])
+    G[n] = gridSeries(g, n);
+  const hasGrid = G.skyCover.length > 0;
   const hours = per.map(q => {
     const f = q.temperatureUnit === "C" ? q.temperature*9/5 + 32 : q.temperature;
     const nums = String(q.windSpeed || "").match(/\d+/g), mph = nums ? Math.max(...nums.map(Number)) : 0;
     const pop = q.probabilityOfPrecipitation ? q.probabilityOfPrecipitation.value : null;
-    const rh = q.relativeHumidity ? q.relativeHumidity.value : null;
+    const ms = Date.parse(q.startTime);
+    const at = n => { const x = gridAt(G[n], ms); return x && x.v != null ? x.v : null; };
+    let rh = q.relativeHumidity ? q.relativeHumidity.value : null;
+    if(rh == null) rh = at("relativeHumidity");
+    const app = at("apparentTemperature"), sky = at("skyCover"), gk = at("windGust");
+    /* amounts are for the hour before this one, like Open-Meteo's */
+    const per1 = n => { const x = gridAt(G[n], ms - 30*60000); return x && x.v != null ? x.v/x.hrs : null; };
+    const qpf = per1("quantitativePrecipitation"), snw = per1("snowfallAmount");
     return { time: String(q.startTime).slice(0, 16), f, mph, pop, rh,
+             feelsF: app != null ? app*9/5 + 32 : null, sky,
+             gustMph: gk != null ? Math.max(mph, gk/1.609344) : null, qpf, snw,
              code: nwsCode(q.shortForecast, pop), dir: NWS_DIR[q.windDirection] != null ? NWS_DIR[q.windDirection] : null };
   });
+  /* liquid in inches or mm, snow depth in inches or cm (as Open-Meteo gives them) */
+  const L = mm => mm == null ? null : metric ? +mm.toFixed(1) : +(mm/25.4).toFixed(2);
+  const S = mm => mm == null ? null : metric ? +(mm/10).toFixed(1) : +(mm/25.4).toFixed(1);
   const out = hours.map(o => ({ time: o.time, temp: Math.round(T(o.f)), pop: o.pop, code: o.code,
-                                wind: Math.round(V(o.mph)), dir: o.dir, gust: Math.round(V(o.mph)) }));
+                                wind: Math.round(V(o.mph)), dir: o.dir,
+                                gust: Math.round(V(o.gustMph != null ? o.gustMph : o.mph)),
+                                amt: hasGrid ? L(o.qpf || 0) : null,
+                                /* rain is what's left of the liquid once the snow (about 10:1) is taken out */
+                                rain: hasGrid ? L(Math.max(0, (o.qpf || 0) - (o.snw || 0)/10)) : null,
+                                snow: hasGrid ? S(o.snw || 0) : null }));
   const byDay = new Map();
   hours.forEach((o, i) => {
     const d = o.time.slice(0, 10);
@@ -1288,53 +1449,94 @@ function nwsHourlyToWX(j){
   for(const [date, hs] of byDay){
     if(days.length >= 10) break;
     const day = hs.filter(h => h.hr >= 7 && h.hr <= 19), pick = day.length ? day : hs;
+    /* the day's wind direction: speed-weighted average of the hours */
+    let sx = 0, sy = 0;
+    hs.forEach(h => { if(h.dir != null){ sx += h.wind*Math.sin(h.dir*Math.PI/180); sy += h.wind*Math.cos(h.dir*Math.PI/180); } });
     days.push({ date,
       code: pick.reduce((a, h) => CODE_RANK(h.code) > CODE_RANK(a) ? h.code : a, pick[0].code),
       hi: Math.max(...hs.map(h => h.temp)), lo: Math.min(...hs.map(h => h.temp)),
-      pop: Math.max(...hs.map(h => h.pop || 0)), amt: null,
-      wind: Math.max(...hs.map(h => h.wind)), gust: Math.max(...hs.map(h => h.wind)) });
+      pop: Math.max(...hs.map(h => h.pop || 0)),
+      amt: hasGrid ? +hs.reduce((a, h) => a + (h.amt || 0), 0).toFixed(metric ? 1 : 2) : null,
+      wind: Math.max(...hs.map(h => h.wind)), gust: Math.max(...hs.map(h => h.gust)),
+      dir: sx || sy ? (Math.atan2(sx, sy)*180/Math.PI + 360) % 360 : null });
   }
-  /* NOAA's hours run out partway through the last day: its high and low
-     would only cover that part, so drop it. */
-  if(days.length > 1 && byDay.get(days[days.length - 1].date).length < 20) days.pop();
+  /* build 51: highs, lows and chances by NWS day and night; a day whose
+     night NOAA's hours don't reach (the last one or two) is dropped */
+  dayNight({ days, hours: out });
+  while(days.length > 1 && days[days.length - 1].loPart) days.pop();
   /* They also start at the current hour, so in the evening "today" only
      holds the hours left (a 9 PM high of 45 on a 58 day). The hours already
      gone are in the forecast saved earlier today, when there is one. */
   try {
+    /* build 51: only from a NOAA forecast (an Open-Meteo one gave Free a 37 on a 33 day),
+       and only the high - the low is tonight's, which NOAA's hours do cover */
     const sv = JSON.parse(STORE.get(wxCacheKey()) || "null");
-    const sd = sv && sv.wx && days[0] && (sv.wx.days || []).find(d => d.date === days[0].date);
-    if(sd && isFinite(sd.hi) && isFinite(sd.lo)){
-      days[0].hi = Math.max(days[0].hi, sd.hi); days[0].lo = Math.min(days[0].lo, sd.lo);
-    }
+    const sd = sv && sv.src === "nws" && sv.wx && days[0] && (sv.wx.days || []).find(d => d.date === days[0].date);
+    const hrNow = +(out[0] && out[0].time.slice(11, 13));
+    if(sd && isFinite(sd.hi) && hrNow > 7) days[0].hi = Math.max(days[0].hi, sd.hi);
   } catch(e){}
+  /* build 51: NOAA's own daily high (MaxT, 7 AM-7 PM) and low (MinT, the night
+     after) where its grid has them - the numbers its written forecast uses */
+  if(g){
+    const pad = n => String(n).padStart(2, "0");
+    const dkey = ms => { const q = zonedParts(new Date(ms), PLACE.tz); return q.year + "-" + pad(q.month) + "-" + pad(q.day); };
+    const cv = c => Math.round(T(c*9/5 + 32));
+    for(const x of gridSeries(g, "maxTemperature")){
+      const d = x.v != null && days.find(d => d.date === dkey(x.t0 + 3600e3));
+      if(d) d.hi = cv(x.v);
+    }
+    for(const x of gridSeries(g, "minTemperature")){
+      const d = x.v != null && days.find(d => d.date === dkey(x.t0 + 3600e3));
+      if(d){ d.lo = cv(x.v); d.loPart = false; }
+    }
+  }
+  while(days.length > 1 && (days[days.length - 1].loPart || byDay.get(days[days.length - 1].date).length < 12)) days.pop();
   const now = hours[0], c = out[0];
-  return { temp: c.temp, feels: Math.round(T(feelsF(now.f, now.mph, now.rh))),
-           humid: now.rh != null ? Math.round(now.rh) : null, code: c.code, cloud: CODE_CLOUD(c.code),
-           wind: c.wind, gust: c.gust, dir: c.dir, precip: null, days, hours: out, at: Date.now() };
+  /* app build 49: when NOAA last updated this forecast (for the "NOAA is behind" notice) */
+  const issued = Date.parse((j.properties && (j.properties.updateTime || j.properties.generatedAt)) || "") || null;
+  return { issued, temp: c.temp, feels: Math.round(T(now.feelsF != null ? now.feelsF : feelsF(now.f, now.mph, now.rh))),
+           humid: now.rh != null ? Math.round(now.rh) : null, code: c.code,
+           cloud: now.sky != null ? Math.round(now.sky) : CODE_CLOUD(c.code),
+           wind: c.wind, gust: c.gust, dir: c.dir, precip: c.amt, days, hours: out, at: Date.now() };
 }
 function nwsForecast(P){
-  const key = "weather.points.v1:" + placeKey();
-  const cached = STORE.get(key);
+  const key = "weather.points.v1:" + placeKey(), gkey = "weather.grid.v1:" + placeKey();
+  const cached = STORE.get(gkey) ? STORE.get(key) : null;    // need both addresses
+  /* the raw grid rides along (same address loadGrid uses, so its 14-min cache
+     is shared); the forecast still works without it */
+  const grid = () => {
+    const gu = STORE.get(gkey);
+    if(!gu) return Promise.resolve(null);
+    return cachedJSON(gu, 14*60000, x => fetch(x, OBS_HDR).then(r => r.ok ? r.json() : Promise.reject("grid " + r.status)))
+      .catch(() => null);
+  };
   return (cached ? Promise.resolve(cached)
     : fetch("https://api.weather.gov/points/" + P.lat.toFixed(4) + "," + P.lng.toFixed(4), OBS_HDR)
         .then(r => r.ok ? r.json() : Promise.reject({ reason: "NOAA points HTTP " + r.status }))
         .then(j => { const u = j.properties && j.properties.forecastHourly;
                      if(!u) throw { reason: "NOAA has no forecast here" };
+                     if(j.properties.forecastGridData) STORE.set(gkey, j.properties.forecastGridData);
+                     /* Free: NOAA knows the place's real time zone (the place list only estimates it) */
+                     const tz = j.properties.timeZone;
+                     if(NJ_FREE && tz && P === PLACE && PLACE.tz !== tz){
+                       PLACE.tz = tz; if(!NJ_WIDGET) STORE.set("weather.place", JSON.stringify(PLACE));
+                     }
                      STORE.set(key, u); return u; }))
-    .then(u => fetch(u, OBS_HDR))
-    .then(r => {
-      if(r.ok) return r.json();
-      /* NOAA re-grids an office now and then; a 404 means the saved address
-         is dead, so forget it and look it up again next time. */
-      if(r.status === 404) STORE.set(key, "");
-      return Promise.reject({ reason: "NOAA hourly HTTP " + r.status });
-    })
-    .then(nwsHourlyToWX);
+    .then(u => Promise.all([
+      fetch(u, OBS_HDR).then(r => {
+        if(r.ok) return r.json();
+        /* NOAA re-grids an office now and then; a 404 means the saved address
+           is dead, so forget it and look it up again next time. */
+        if(r.status === 404){ STORE.set(key, ""); STORE.set(gkey, ""); }
+        return Promise.reject({ reason: "NOAA hourly HTTP " + r.status });
+      }),
+      grid()]))
+    .then(([j, g]) => nwsHourlyToWX(j, g));
 }
 let NWS_STATE = "not used";
 function backupForecast(stamp){
   const P = PLACE;
-  const usLike = P.cc === "US" || (!P.cc && P.lat > 17 && P.lat < 72 && P.lng < -64 && P.lng > -180);
+  const usLike = usPlace(P);
   const fromCache = () => {
     if(WX_LIVE && WX_SRC !== "cache") return false;            // keep a fresher one already showing
     const c = loadSavedForecast();
@@ -1357,7 +1559,8 @@ function backupForecast(stamp){
 }
 /* the wallpaper's own words for where the forecast came from */
 function wxSourceNote(){
-  if(WX_SRC === "nws") return "NOAA forecast";
+  if(WX_SRC === "nws") return NJ_FREE || usPlace(PLACE) ? "" : "NOAA forecast";
+  if(WX_SRC === "om" && !NJ_FREE && usPlace(PLACE) && /^failed/.test(NWS_STATE)) return "backup forecast";
   if(WX_SRC === "cache"){
     const mins = Math.round((realNow() - WX_SRC_AT)/60000);
     return "saved forecast, " + (mins < 60 ? mins + " min" : Math.round(mins/60) + " h") + " old";
@@ -2138,7 +2341,7 @@ function buildProfile(elev, h0){
       if(d <= 26) mM = Math.max(mM, ang);
       mF = Math.max(mF, ang);
       /* Copernicus flattens open sea to exactly 0 m. */
-      if(d <= 26){ wn++; if(h === 0) wc++; }
+      if(d <= 26){ wn++; if(h === 0 || (NJ_FREE && h < 0)) wc++; }   // tiles (Free): sea is below 0
     }
     near.push(mN); mid.push(Math.max(mN, mM)); far.push(Math.max(mM, mF));
     water.push(wn ? wc/wn : 0);
@@ -2222,8 +2425,65 @@ function loadTerrain(){
     }
     applyTerrain();
   };
+  /* Njord Free (app build 48): heights from the AWS Terrain Tiles instead -
+     a handful of map tiles rather than 300 single points, no Open-Meteo */
+  if(NJ_FREE){
+    elevFromTiles(pts).then(v => {
+      if(placeKey() !== stamp) return;
+      v.forEach((h, k) => { elev[k] = h; });
+      left = 0; partial(); done();
+    }).catch(() => {
+      if(placeKey() !== stamp) return;
+      failed = batches.length; left = 0; done();
+    });
+    return;
+  }
   /* fire the batches a quarter second apart, not as one burst */
   batches.forEach((i0, n) => setTimeout(() => fetchBatch(i0, 0), n*250));
+}
+/* ---- terrain tiles (Njord Free, app build 48) ------------------------------
+   Terrarium PNG tiles from the AWS open dataset (USGS 3DEP for the US, SRTM /
+   GMTED elsewhere, ETOPO1 under the sea): height in metres is
+   (R*256 + G + B/256) - 32768. Near points (to 16 km) are read at zoom 10
+   (~110 m pixels at 45 deg N), the rest at zoom 8. Sea is below 0, which is
+   what buildProfile reads as water. */
+const TILE_URL = "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/";
+const TILE_PX = new Map();                   // "z/x/y" -> Promise<Uint8ClampedArray>
+function tilePixels(z, x, y){
+  const k = z + "/" + x + "/" + y;
+  if(!TILE_PX.has(k)){
+    TILE_PX.set(k, new Promise((ok, no) => {
+      const im = new Image();
+      im.crossOrigin = "anonymous";
+      im.onload = () => {
+        try {
+          const c = document.createElement("canvas"); c.width = c.height = 256;
+          const g = c.getContext("2d", { willReadFrequently: true });
+          g.drawImage(im, 0, 0);
+          ok(g.getImageData(0, 0, 256, 256).data);
+        } catch(e){ no(e); }
+      };
+      im.onerror = () => no("tile " + k);
+      im.src = TILE_URL + k + ".png";
+    }).catch(e => { TILE_PX.delete(k); throw e; }));
+    if(TILE_PX.size > 40) TILE_PX.delete(TILE_PX.keys().next().value);
+  }
+  return TILE_PX.get(k);
+}
+function elevFromTiles(pts){
+  const D = [0].concat(...Array(TERRAIN_B).fill(TERRAIN_D));     // distance of each point, km
+  return Promise.all(pts.map(([lat, lng], i) => {
+    const z = D[i] <= 16 ? 10 : 8, n = 1 << z;
+    const fx = (lng + 180)/360*n;
+    const s = Math.sin(lat*Math.PI/180);
+    const fy = (0.5 - Math.log((1 + s)/(1 - s))/(4*Math.PI))*n;
+    const tx = Math.floor(fx), ty = Math.floor(fy);
+    const px = Math.min(255, Math.floor((fx - tx)*256)), py = Math.min(255, Math.floor((fy - ty)*256));
+    return tilePixels(z, ((tx % n) + n) % n, ty).then(d => {
+      const o = (py*256 + px)*4;
+      return Math.round(d[o]*256 + d[o + 1] + d[o + 2]/256 - 32768);
+    });
+  }));
 }
 let TERRAIN_TRIES = 0, TERRAIN_RETRY = null, SCENERY_TIMER = null;
 
@@ -2241,6 +2501,22 @@ function classifyBiome(precipMm, tMeanC){
   if(precipMm < need) return "dry";
   return "green";
 }
+/* Njord Free: the ground type by broad US climate region, close to what the
+   climate-history lookup gives (desert Southwest, steppe High Plains and dry
+   interior West, green East / Pacific Northwest / northern Rockies, tundra
+   in northern Alaska). */
+function usBiome(lat, lng){
+  if(lat < 23 && lng < -154) return "green";                          // Hawaii
+  if(lat > 50 && lng < -129) return lat > 62 ? "cold" : "green";        // Alaska
+  if(lng < -121.5 && lat >= 40) return "green";                          // west of the Cascades
+  if(lng < -120 && lat < 40 && lat >= 34) return "dry";                  // coastal / central California
+  if(lng > -118 && lng < -109.5 && lat < 37.5) return "desert";          // Mojave, Sonoran
+  if(lng >= -109.5 && lng < -103 && lat < 33.5) return "desert";         // Chihuahuan
+  if(lng < -114 && lng >= -121.5 && lat >= 44) return "green";           // inland Northwest forests
+  if(lng < -110 && lng >= -116 && lat >= 44) return "green";             // northern Rockies
+  if(lng < -98) return "dry";                                            // interior West, High Plains
+  return "green";                                                        // the East
+}
 const biomeKind = () => BIOME_FORCE || (BIOME && BIOME.kind) || "green";
 const biome = () => BIOMES[biomeKind()];
 function loadBiome(){
@@ -2248,6 +2524,11 @@ function loadBiome(){
   const cached = STORE.get("weather.biome.v1:" + key);
   if(cached){
     try { BIOME = JSON.parse(cached); BIOME_STATE = "cached"; applyTerrain(); return; } catch(e){}
+  }
+  /* Njord Free (app build 48): no climate-history call; US regions instead */
+  if(NJ_FREE){
+    BIOME = { kind: usBiome(PLACE.lat, PLACE.lng), src: "US regions" }; BIOME_STATE = "ok (US regions)";
+    applyTerrain(); return;
   }
   BIOME = null; BIOME_STATE = "loading";
   const y = new Date().getUTCFullYear() - 1;
@@ -2292,6 +2573,25 @@ function loadSettlement(){
   if(PLACE.pop != null && PLACE.cc){ SETTLE_STATE = "cached"; applyTerrain(); return; }
   if(!PLACE.short || PLACE.short === "My location"){ SETTLE_STATE = "unavailable"; return; }
   SETTLE_STATE = "loading";
+  if(NJ_FREE){
+    const k = usKey(PLACE.short);
+    usPlaces().then(list => {
+      if(placeKey() !== stamp) return;
+      let best = null, bd = 40;
+      for(const o of list){
+        if(o.k !== k && o.k !== k + " township") continue;
+        const d = kmBetween(PLACE.lat, PLACE.lng, o.r[2], o.r[3]);
+        if(d < bd){ bd = d; best = o.r; }
+      }
+      if(PLACE.pop == null) PLACE.pop = best ? usHit(best).population : 0;
+      if(!PLACE.cc){ PLACE.cc = "US"; STORE.set("weather.cc.v1:" + key, "US"); }
+      SETTLE_STATE = "ok (US list)";
+      STORE.set("weather.pop.v1:" + key, String(PLACE.pop));
+      if(!NJ_WIDGET) STORE.set("weather.place", JSON.stringify(PLACE));
+      applyTerrain();
+    }).catch(() => { if(placeKey() === stamp) SETTLE_STATE = "unavailable"; });
+    return;
+  }
   fetch("https://geocoding-api.open-meteo.com/v1/search?count=10&language=en&format=json&name="
         + encodeURIComponent(PLACE.short))
     .then(r => r.ok ? r.json() : Promise.reject(0))
@@ -7667,6 +7967,76 @@ function choose(i){
   if(typeof closeKb === "function") closeKb();
   showUI();
 }
+/* ---- Njord Free: the built-in US place list (app build 48) -----------------
+   Search runs on the phone against the Census Bureau's list of US places and
+   townships (us-places.json, built at compile time by tools/build_us_places.py
+   and shipped only in Free): no geocoding service. Rows are
+   [name, state, lat, lng, population or -1]. */
+let US_PLACES = null;
+function usPlaces(){
+  if(!US_PLACES) US_PLACES = fetch("us-places.json").then(r => r.ok ? r.json() : Promise.reject("places " + r.status))
+    .then(rows => rows.map(r => ({ r, k: usKey(r[0]) })))
+    .catch(e => { US_PLACES = null; throw e; });
+  return US_PLACES;
+}
+/* "St. Paul" = "Saint Paul" = "st paul"; accents and punctuation don't count */
+function usKey(t){
+  return String(t).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
+    .replace(/\bsaint\b/g, "st").replace(/\bsainte\b/g, "ste").replace(/\bmount\b/g, "mt").replace(/\bfort\b/g, "ft")
+    .replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+}
+/* US time zone from the state, with the split states divided by longitude
+   (close; NOAA's own time zone for the place replaces it on the first forecast) */
+const US_TZ = { E:"America/New_York", C:"America/Chicago", M:"America/Denver", P:"America/Los_Angeles" };
+const US_STATE_TZ = { AL:"C", AR:"C", CT:"E", DE:"E", DC:"E", GA:"E", IL:"C", IA:"C", LA:"C", ME:"E", MD:"E",
+  MA:"E", MN:"C", MS:"C", MO:"C", MT:"M", NV:"P", NH:"E", NJ:"E", NM:"M", NY:"E", NC:"E", OH:"E", OK:"C",
+  PA:"E", RI:"E", SC:"E", UT:"M", VT:"E", VA:"E", WA:"P", WV:"E", WI:"C", WY:"M", CA:"P", CO:"M" };
+function usTz(st, lat, lng){
+  switch(st){
+    case "AZ": return "America/Phoenix";
+    case "HI": return "Pacific/Honolulu";
+    case "AK": return lng < -169.5 ? "America/Adak" : "America/Anchorage";
+    case "FL": return US_TZ[lng < -85.0 ? "C" : "E"];
+    case "IN": return US_TZ[lng < -86.9 && (lat > 40.9 || lat < 38.4) ? "C" : "E"];
+    case "KY": return US_TZ[lng < -85.8 ? "C" : "E"];
+    case "TN": return US_TZ[lng > -84.9 ? "E" : "C"];
+    case "MI": return US_TZ[lng < -87.6 && lat < 46.2 && lat > 45.0 ? "C" : "E"];
+    case "ND": return US_TZ[lng < -101.0 && lat < 47.5 ? "M" : "C"];
+    case "SD": return US_TZ[lng < -100.6 ? "M" : "C"];
+    case "NE": return US_TZ[lng < -101.4 ? "M" : "C"];
+    case "KS": return US_TZ[lng < -101.5 ? "M" : "C"];
+    case "TX": return US_TZ[lng < -104.6 ? "M" : "C"];
+    case "ID": return US_TZ[lat > 45.6 ? "P" : "M"];
+    case "OR": return US_TZ[lng > -118.0 && lat < 44.6 ? "M" : "P"];
+  }
+  return US_TZ[US_STATE_TZ[st] || "C"];
+}
+function usHit(row){
+  const [name, st, lat, lng, pop] = row;
+  return { name, latitude: lat, longitude: lng, timezone: usTz(st, lat, lng), admin1: US_STATES[st] || st,
+           country: "United States", country_code: "US",
+           /* census-designated places have no estimate: draw them as a town */
+           population: pop >= 0 ? pop : 1500 };
+}
+function usSearch(name, quals, count){
+  const q = usKey(name);
+  const want = quals.map(x => x.toUpperCase()).map(x => US_STATES[x] ? x
+    : Object.keys(US_STATES).find(k => US_STATES[k].toUpperCase() === x)).filter(Boolean);
+  return usPlaces().then(list => {
+    const out = [];
+    for(const o of list){
+      if(want.length && !want.includes(o.r[1])) continue;
+      let rank;
+      if(o.k === q || o.k === q + " township") rank = 0;
+      else if(o.k.startsWith(q)) rank = 1;
+      else if(o.k.includes(" " + q)) rank = 2;
+      else continue;
+      out.push({ o, rank });
+    }
+    out.sort((a, b) => a.rank - b.rank || b.o.r[4] - a.o.r[4]);
+    return out.slice(0, count).map(x => usHit(x.o.r));
+  });
+}
 /* Place lookup shared by the search box and Lively's Customize panel.
    Open-Meteo matches the place NAME only, so "Benson, MN" found nothing;
    the part after the comma now picks among same-named places instead:
@@ -7684,6 +8054,7 @@ function geoSearch(term, count){
   const parts = String(term || "").split(",").map(t => t.trim()).filter(Boolean);
   const name = parts[0] || "", quals = parts.slice(1).map(q => q.toLowerCase());
   if(name.length < 2) return Promise.resolve([]);
+  if(NJ_FREE) return usSearch(name, quals, count);
   return fetch("https://geocoding-api.open-meteo.com/v1/search?count=" + (quals.length ? 20 : count)
                + "&language=en&format=json&name=" + encodeURIComponent(name))
     .then(r => r.ok ? r.json() : Promise.reject(0))
@@ -8369,7 +8740,7 @@ function syncRig(){
     const flags = [S.thunder&&"thunder", S.blizzard&&"blizzard",
                    S.windy&&"windy"].filter(Boolean).join(" ") || "\u2014";
     $("rdout").textContent =
-      "feed      " + (RIG.synthetic ? "SYNTH" : WX_STATE) + "  from " + ({ om:"Open-Meteo", nws:"NOAA backup", cache:"saved" }[WX_SRC]) +
+      "feed      " + (RIG.synthetic ? "SYNTH" : WX_STATE) + "  from " + ({ om:"Open-Meteo", nws:"NOAA", cache:"saved" }[WX_SRC]) +
         (WX_WHY ? "  " + WX_WHY : "") + (NWS_STATE !== "not used" ? "  [NOAA " + NWS_STATE + "]" : "") +
         (omBlocked() ? "  [Open-Meteo paused " + Math.ceil((OM_BLOCK_UNTIL - realNow())/60000) + " min]" : "") + NL +
       "sky from  " + (WX && WX.skySrc === "obs" && OBS

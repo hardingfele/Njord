@@ -53,12 +53,12 @@ const ph = document.createElement("div"); ph.id = "ph";
 ph.innerHTML =
   '<div id="phTop"><div id="phHero"></div></div>' +
   '<div id="phSheet"><div class="grab"></div><div id="phAur"></div>' +
-    '<section class="pc" id="phHourly"><h3>Next 24 hours <a class="jump" id="phJump">10-day &rsaquo;</a></h3><div class="sum24"></div><div class="hrs"></div></section>' +
+    '<section class="pc" id="phHourly"><h3>Next 24 hours <a class="jump" id="phJump">' + (FREE ? '7-day' : '10-day') + ' &rsaquo;</a></h3><div class="sum24"></div><div class="hrs"></div></section>' +
     '<section class="pc" id="phRadar" hidden><h3>Radar <a class="jump" id="phRadarJump">Full map &rsaquo;</a></h3>' +
-      '<div class="rdMap" id="phRadarMap"><div class="rdGL"></div><span class="rdTime"></span></div></section>' +
+      '<div class="rdMap" id="phRadarMap"><div class="rdGL"></div><span class="rdTime"></span></div><div class="rdNote" hidden></div></section>' +
     '<div class="grid2" id="phDetails"></div>' +
     '<section class="pc" id="phSky" style="margin-top:12px"></section>' +
-    '<section class="pc" id="phDays"><h3>10-day forecast <span class="tapHint">tap a day</span></h3><div class="days"></div></section>' +
+    '<section class="pc" id="phDays"><h3>' + (FREE ? '7-day' : '10-day') + ' forecast <span class="tapHint">tap a day</span></h3><div class="days"></div></section>' +
     '<section class="pc" id="phAfd" hidden></section>' +
   '</div>';
 document.body.appendChild(ph);
@@ -67,7 +67,7 @@ document.body.appendChild(ph);
   const box = document.createElement("div"); box.id = "phPlaces";
   box.innerHTML = '<div class="chips"></div>' +
     '<button class="pbtn" id="phSave"></button>' +
-    (FREE ? '<div class="njFreeNote">Njord Free keeps ' + FREE_PLACES + ' saved places. <b data-up="1">Get Njord</b> for more.</div>' : '') +
+    (FREE ? '<div class="njFreeNote">Njord Free keeps ' + FREE_PLACES + ' saved places. More are coming in <b>Njord</b>, the paid version.</div>' : '') +
     '<button class="pbtn" id="phLoc">Use my location</button>' +
     '<div class="hintTxt">Swipe left or right on the sky to move between My location, home and your saved places.</div>';
   const h4 = document.createElement("h4"); h4.textContent = "Places"; h4.id = "phPlacesH";
@@ -143,7 +143,7 @@ function render(force){
   if(!isPhone()) return;
   if(WX !== lastWX){ lastWX = WX; wxGen++; }
   const p = zonedParts(new Date(), PLACE.tz);
-  const hs = [PLACE.lat, PLACE.lng, p.hour, p.minute, wxGen, WX_STATE, CONFIG.units, CONFIG.clock, phRefreshing, WX_FETCHED,
+  const hs = [PLACE.lat, PLACE.lng, p.hour, p.minute, wxGen, WX_STATE, WX_SRC, NWS_STATE, navigator.onLine, CONFIG.units, CONFIG.clock, phRefreshing, WX_FETCHED,
               SCENE && SCENE.cls && SCENE.cls.label, ALERTS.map(a => a.id).join(",")].join("|");
   if(force || hs !== heroSig){ heroSig = hs; renderHero(); }
   /* sun/moon arcs and the aurora note move on their own, slower clock */
@@ -324,6 +324,36 @@ function updatedLine(){
     (phRefreshing ? "Updating\u2026" : (WX_SRC === "cache" ? "Saved forecast from " : "Updated ") + esc(day + fmtTime(p.hour*60 + p.minute))) +
     '<svg viewBox="0 0 24 24" width="1.05em" height="1.05em" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M20 12a8 8 0 1 1-2.6-5.9"/><path d="M20 4v5h-5"/></svg></button>';
 }
+/* ---- source notice (app build 49) -----------------------------------------
+   When the forecast service is down or behind, say so plainly - and say whose
+   end it's on, so a NOAA outage doesn't read as Njord being broken.
+     - forecast can't be had (and the phone is online) -> "usually NOAA's servers"
+     - no network at all                                -> the connection
+     - NOAA's newest forecast is over 6 hours old        -> NOAA is behind
+   Worded softly (Aaran, build 49): "this usually happens when..." 
+   Njord: Open-Meteo first, NOAA as backup. Free: NOAA only. */
+function srcNotice(){
+  const offline = typeof navigator !== "undefined" && navigator.onLine === false;
+  let t = "";
+  if(WX_STATE === "offline" || WX_SRC === "cache"){
+    const saved = WX && WX_SRC === "cache" && WX_SRC_AT
+      ? " Showing the forecast saved at " + fmtTime((p => p.hour*60 + p.minute)(zonedParts(new Date(WX_SRC_AT), PLACE.tz))) + "." : "";
+    if(offline) t = "No internet connection." + saved + " Njord keeps checking.";
+    else t = "Forecast data is unavailable right now." + saved + " This usually happens when " +
+             (FREE ? "NOAA's" : "the weather service's") + " servers aren't responding or are having an outage. Njord keeps checking.";
+  } else if(WX && WX_SRC === "nws" && WX.issued && Date.now() - WX.issued > 6*3600e3){
+    const p = zonedParts(new Date(WX.issued), PLACE.tz);
+    const day = Date.now() - WX.issued > 20*3600e3 ? new Date(WX.issued).toLocaleDateString([], { weekday: "short", timeZone: PLACE.tz }) + " " : "";
+    t = "The newest forecast NOAA has for this area is from " + day + fmtTime(p.hour*60 + p.minute) +
+        ". This usually happens when NOAA's servers fall behind. Njord keeps checking.";
+  } else if(!FREE && WX && WX_SRC === "om" && usPlace(PLACE) && /^failed/.test(NWS_STATE)){
+    /* build 51: NOAA is Njord's forecast in the US; Open-Meteo stands in when it's down */
+    t = "NOAA's forecast is unavailable right now, so this is from Njord's backup forecast source. Njord keeps checking.";
+  } else if(!FREE && WX && WX_SRC === "nws" && !usPlace(PLACE)){
+    t = "Our main forecast source is unavailable right now, so this is NOAA's forecast. Njord keeps checking.";
+  }
+  return t ? '<div class="srcNote" role="status">' + esc(t) + '</div>' : "";
+}
 function phRefresh(){
   if(FREE || phRefreshing) return;
   phRefreshing = true; render(true);
@@ -345,7 +375,8 @@ function renderHero(){
           '<div class="hn' + (nm.length > 22 ? ' xl' : nm.length > 14 ? ' l' : '') + '">' + (isHere(PLACE) ? '<span class="hpin" title="My location">' +
           '<svg viewBox="0 0 24 24" width="0.62em" height="0.62em" fill="currentColor"><path d="M12 22s-7-6.2-7-12a7 7 0 0 1 14 0c0 5.8-7 12-7 12z"/><circle cx="12" cy="10" r="2.6" fill="#0b1630"/></svg></span>' : '') + esc(nm) + '</div>';
   if(!WX){
-    h += '<div class="hc" style="margin-top:14px">' + (WX_STATE === "offline" ? "Weather unavailable — retrying shortly" : "Loading weather…") + '</div>';
+    h += '<div class="hc" style="margin-top:14px">' + (WX_STATE === "offline" ? "Weather unavailable — retrying shortly" : "Loading weather…") + '</div>' +
+         (WX_STATE === "offline" ? srcNotice() : "");
   } else {
     const label = SCENE && SCENE.cls ? SCENE.cls.label : "";
     const d0 = WX.days && WX.days[0];
@@ -357,7 +388,7 @@ function renderHero(){
     h += '<div class="ht">' + WX.temp + deg + '</div>' + alertPill() +
          '<div class="hc">' + esc(label) + '</div>' +
          '<div class="hs">Feels like ' + WX.feels + deg + (d0 ? '<span class="dotsep"></span>H ' + d0.hi + deg + '&ensp;L ' + d0.lo + deg : '') + '</div>' +
-         '<div class="hs hwl">' + wind + '</div>' + updatedLine();
+         '<div class="hs hwl">' + wind + '</div>' + updatedLine() + srcNotice();
   }
   $("phHero").innerHTML = h;
   mini.innerHTML = '<span class="mn">' + esc(placeName(PLACE)) + '</span>' +
@@ -984,11 +1015,10 @@ $("phPlaces").addEventListener("click", e => {
 });
 $("phSave").addEventListener("click", () => {
   const list = loadPlaces();
-  /* Njord Free: at the limit nothing is saved; either way the Get Njord sheet follows a save */
-  if(FREE && freeCount() >= FREE_PLACES){ openUpsell(); return; }
+  /* Njord Free: at the limit nothing is saved (app build 48: a short note, no sheet) */
+  if(FREE && freeCount() >= FREE_PLACES){ njNote("Njord Free keeps " + FREE_PLACES + " saved places. More are coming in Njord, the paid version."); return; }
   if(!list.some(p => sameTown(p, PLACE))){ list.push(Object.assign({}, PLACE)); savePlaces(list); }
   render(true);
-  if(FREE) openUpsell();
 });
 $("phPlaces").addEventListener("click", e => { if(e.target.closest("[data-up]")){ e.stopPropagation(); openUpsell(); } }, true);
 $("phLoc").addEventListener("click", () => { try { useMyLocation(); } catch(e){} });
@@ -1256,7 +1286,7 @@ function syncAlertsUI(){
         '<div class="seg njWrap"><button data-am="here" class="on">My location only</button>' +
         '<button data-up="1" class="locked">' + LOCK_SVG + 'My location + selected places</button>' +
         '<button data-up="1" class="locked">' + LOCK_SVG + 'Selected places only</button></div>' +
-        '<div class="njFreeNote">Alerts for saved places are in <b data-up="1">Njord</b>.</div>' :
+        '<div class="njFreeNote">Alerts for saved places are coming in <b>Njord</b>, the paid version.</div>' :
       '<div class="seg njWrap"><button data-am="here"' + (ap.mode === "here" ? ' class="on"' : "") + '>My location only</button>' +
       '<button data-am="both"' + (ap.mode === "both" ? ' class="on"' : "") + '>My location + selected places</button>' +
       '<button data-am="places"' + (ap.mode === "places" ? ' class="on"' : "") + '>Selected places only</button></div>') +
@@ -1397,7 +1427,16 @@ function briefOut(){
   lines = lines.filter(l => l[1]);
   if(!lines.length){ const k = Object.keys(p0)[0]; if(k) lines = [[k, p0[k]]]; }
   const label = SCENE && SCENE.cls ? SCENE.cls.label : "";
-  return { ok: true, win, title: WX.temp + "°" + (label ? " · " + label : ""), lines,
+  /* build 46: current conditions, shown above Today / Tonight */
+  /* build 47: worded like the forecast under it - Sunny by day (Clear only at night),
+     and "North-northwest wind 12 mph, gusts to 22" */
+  let sky = label;
+  if(!nightAt(localMin())) sky = { "Clear": "Sunny", "Mainly Clear": "Mostly Sunny" }[label] || label;
+  let now = WX.temp + "°" + (sky ? ", " + sky : "") + ". Feels like " + WX.feels + "°.";
+  if(WX.wind == null || WX.wind < 1) now += " Calm.";
+  else now += " " + (WX.dir != null ? cap(compassWords(WX.dir)) + " wind " : "Wind ") + WX.wind + " " + spdUnit() +
+              (isGusty(WX.wind, WX.gust) ? ", gusts to " + WX.gust : "") + ".";
+  return { ok: true, win, title: WX.temp + "°" + (label ? " · " + label : ""), now, lines,
            place: { name: PLACE.name, short: PLACE.short, lat: PLACE.lat, lng: PLACE.lng, tz: PLACE.tz, cc: PLACE.cc } };
 }
 if(NJ_Q.get("brief") === "1"){
@@ -1416,11 +1455,11 @@ if(NJ_Q.get("brief") === "1"){
 render(true);
 /* ---- Njord Free (app build 37) ----------------------------------------------
    Saved places count with Home (a Home that isn't also a saved place counts
-   as one). The Get Njord sheet opens from anything locked and after every
-   save; Settings has the same list above About; places outside the US show
+   as one). Anything locked shows a one-line "coming in Njord" note (app
+   build 48; the Get Njord sheet is gone until Njord is on Google Play); Settings has the same list above About; places outside the US show
    a card instead of their forecast. */
-const UP_LIST = ["Unlimited saved places", "Forecasts outside the US", "Alerts for your saved places",
-                 "Daily forecast notifications", "Widget: any saved place, any update interval", "More radar (coming)"];
+const UP_LIST = ["10-day forecast", "Unlimited saved places", "Forecasts outside the US", "Alerts for your saved places",
+                 "Daily forecast notifications", "Widget: any saved place, any update interval", "More radar layers"];
 function freeCount(){
   const list = loadPlaces(), hm = homeOf();
   return list.length + (hm && !list.some(p => sameTown(p, hm)) ? 1 : 0);
@@ -1428,22 +1467,18 @@ function freeCount(){
 function upList(){ return '<ul class="upList">' + UP_LIST.map(t => '<li>' + esc(t) + '</li>').join("") + '</ul>'; }
 let upEl = null;
 function upsellOpen(){ return !!(upEl && !upEl.hidden); }
+/* app build 48: Njord (paid) isn't out yet, so there is no sheet to sell it.
+   Anything locked shows a one-line note instead. */
 function openUpsell(){
   if(!FREE) return;
-  if(!upEl){
-    upEl = document.createElement("div"); upEl.id = "njUp"; upEl.hidden = true;
-    upEl.innerHTML = '<div class="upDim" data-close="1"></div><div class="upSheet"><h2>Get Njord</h2>' +
-      '<div class="upSub">Everything in Njord Free, plus:</div>' + upList() +
-      '<button class="upGo">Get Njord</button><div class="upSoon" hidden>Njord is not on Google Play yet.</div>' +
-      '<button class="upLater" data-close="1">Not now</button></div>';
-    document.body.appendChild(upEl);
-    upEl.addEventListener("click", e => {
-      if(e.target.closest("[data-close]")) closeUpsell();
-      else if(e.target.closest(".upGo")) getNjord(upEl);
-    });
-  }
-  upEl.querySelector(".upSoon").hidden = true;
-  upEl.hidden = false;
+  njNote("That's coming in Njord, the paid version.");
+}
+let noteEl = null, noteT = null;
+window.njNote = (t) => njNote(t);
+function njNote(t){
+  if(!noteEl){ noteEl = document.createElement("div"); noteEl.id = "njNote"; document.body.appendChild(noteEl); }
+  noteEl.textContent = t; noteEl.classList.add("on");
+  clearTimeout(noteT); noteT = setTimeout(() => noteEl.classList.remove("on"), 2600);
 }
 function closeUpsell(){ if(upEl) upEl.hidden = true; }
 /* no store listing yet: say so. Later this opens Njord's Google Play page. */
@@ -1451,13 +1486,11 @@ function getNjord(scope){ const n = scope.querySelector(".upSoon"); if(n) n.hidd
 if(FREE && setEl){
   const about = [...setEl.querySelectorAll("h4")].find(h => /^about$/i.test(h.textContent.trim()));
   if(about){
-    const h4 = document.createElement("h4"); h4.textContent = "Get Njord";
+    const h4 = document.createElement("h4"); h4.textContent = "Coming in Njord";
     const box = document.createElement("div"); box.id = "sGetNjord";
-    box.innerHTML = '<div class="upSub">Everything in Njord Free, plus:</div>' + upList() +
-      '<button class="upGo">Get Njord</button><div class="upSoon" hidden>Njord is not on Google Play yet.</div>';
+    box.innerHTML = '<div class="upSub">Njord, the paid version, is on its way. Everything in Njord Free, plus:</div>' + upList();
     about.parentNode.insertBefore(h4, about); about.parentNode.insertBefore(box, about);
     box.addEventListener("mousedown", e => e.preventDefault());
-    box.addEventListener("click", e => { if(e.target.closest(".upGo")) getNjord(box); });
   }
 }
 /* places outside the US: Njord Free covers the US only */
@@ -1469,18 +1502,15 @@ function syncIntl(){
   if(out && !intlEl){
     intlEl = document.createElement("div"); intlEl.id = "njIntl";
     intlEl.innerHTML = '<div class="upDim"></div><div class="intlCard"><h2></h2>' +
-      '<p>Njord Free covers the United States. Forecasts for places in other countries are in Njord.</p>' +
-      '<button class="upGo">Get Njord</button><div class="upSoon" hidden>Njord is not on Google Play yet.</div>' +
+      '<p>Njord Free covers the United States. Forecasts for other countries are coming in Njord, the paid version.</p>' +
       '<button class="upLater">Back to My location</button></div>';
     document.body.appendChild(intlEl);
     intlEl.addEventListener("click", e => {
-      if(e.target.closest(".upGo")) getNjord(intlEl);
-      else if(e.target.closest(".upLater")){ intlEl.hidden = true; goHere(); }
+      if(e.target.closest(".upLater")){ intlEl.hidden = true; goHere(); }
     });
   }
   if(intlEl){
     if(out) intlEl.querySelector("h2").textContent = placeName(PLACE);
-    if(out && intlEl.hidden) intlEl.querySelector(".upSoon").hidden = true;
     intlEl.hidden = !out;
   }
 }
@@ -1564,6 +1594,45 @@ function rdFrames(map, layer, shown){
   }
   return times;
 }
+/* -- radar status (app build 49) --
+   Asks NOAA's map service which radar times it has (WMS GetCapabilities for
+   the layer; its time "default" is the newest scan) every few minutes. If
+   that can't be had, or radar tiles keep failing, the radar is down; if the
+   newest scan is over 30 minutes old, NOAA's radar is behind. Either way a
+   short note says so on the card and the full map. */
+const RDS = { layer: "", at: 0, latest: 0, fails: 0, tileErr: 0, busy: false };
+function rdCheck(layer){
+  const L = RD.layers.find(x => x.id === layer) || RD.layers[0];
+  if(RDS.busy || (RDS.layer === L.id && Date.now() - RDS.at < 3*60e3)) return;
+  RDS.busy = true;
+  fetch(RD.W + L.wms + "/ows?service=WMS&version=1.3.0&request=GetCapabilities", { cache: "no-store" })
+    .then(r => r.ok ? r.text() : Promise.reject(r.status))
+    .then(t => {
+      const m = /<Dimension[^>]*name="time"[^>]*default="([^"]+)"/i.exec(t) || /<Dimension[^>]*default="([^"]+)"[^>]*name="time"/i.exec(t);
+      const ms = m ? Date.parse(m[1]) : NaN;
+      if(!isFinite(ms)) throw "no time";
+      RDS.latest = ms; RDS.fails = 0; RDS.tileErr = 0;
+    })
+    .catch(() => { RDS.fails++; })
+    .finally(() => { RDS.busy = false; RDS.layer = L.id; RDS.at = Date.now(); rdNoteSync(); });
+}
+function rdNoteText(){
+  const off = navigator.onLine === false;
+  if(off) return "";                                   // no connection: the app says so elsewhere
+  if(RDS.fails >= 2 || (RDS.fails >= 1 && RDS.tileErr >= 3))
+    return "Radar is unavailable right now. This usually happens when NOAA's radar servers aren't responding or are having an outage. Njord keeps checking.";
+  if(RDS.latest && Date.now() - RDS.latest > 30*60e3)
+    return "The newest radar NOAA has is from " + rdClock(RDS.latest) + ". This usually happens when NOAA's radar servers fall behind. Njord keeps checking.";
+  return "";
+}
+function rdNoteSync(){
+  const t = rdNoteText();
+  document.querySelectorAll(".rdNote").forEach(el => { el.textContent = t; el.hidden = !t; });
+}
+function rdWatch(map){
+  map.on("error", e => { if(e && e.sourceId && /^rad\d/.test(e.sourceId)){ RDS.tileErr++; if(RDS.tileErr === 3){ RDS.at = 0; rdCheck(RD.layer); } } });
+}
+setInterval(rdNoteSync, 60e3);
 function rdShowFrame(map, i){ for(let k = 0; k < RD.N; k++) if(map.getLayer("rad" + k)) map.setPaintProperty("rad" + k, "raster-opacity", k === i ? 0.85 : 0); }
 /* -- the card -- */
 const rdCard = { sec: $("phRadar"), map: null, el: $("phRadarMap"), key: "", times: [], i: 0, timer: 0, seen: false, at: 0, style: "" };
@@ -1578,6 +1647,7 @@ function rdCardSync(){
     if(!ok2){ rdCard.sec.hidden = true; return; }
     const fresh = !rdCard.map || style !== rdCard.style;
     rdCard.key = key; rdCard.at = Date.now();
+    rdCheck("bref");
     const go = () => {
       rdCard.times = rdFrames(rdCard.map, "bref", RD.N - 1);
       rdCard.el.querySelector(".rdTime").textContent = "▶ " + rdClock(rdCard.times[0]) + " – " + rdClock(rdCard.times[RD.N - 1]);
@@ -1587,6 +1657,7 @@ function rdCardSync(){
       rdCard.map = new maplibregl.Map({ container: rdCard.el.querySelector(".rdGL"), style: rdStyleUrl(style), center: [PLACE.lng, PLACE.lat], zoom: 6.6,
         interactive: false, attributionControl: false, fadeDuration: 0 });
       rdCard.pin = new maplibregl.Marker({ color: "#4fa3b5", scale: 0.7 }).setLngLat([PLACE.lng, PLACE.lat]).addTo(rdCard.map);
+      rdWatch(rdCard.map);
       rdCard.map.on("style.load", () => { rdText(rdCard.map, RD.TEXT); go(); });
     } else if(fresh){
       rdCard.map.setStyle(rdStyleUrl(style));
@@ -1603,7 +1674,8 @@ function rdLoop(){
   rdShowFrame(rdCard.map, rdCard.i);
   const last = rdCard.i === RD.N - 1;
   rdCard.i = (rdCard.i + 1) % RD.N;
-  rdCard.timer = setTimeout(rdLoop, last ? 1800 : 500);
+  const v = rdSpd();
+  rdCard.timer = setTimeout(rdLoop, last ? v.end + 200 : v.f);
 }
 if(NJ_Q.get("brief") !== "1"){
   if("IntersectionObserver" in window)
@@ -1623,12 +1695,12 @@ function rdOpen2(){
     rdEl = document.createElement("div"); rdEl.id = "rdFull"; rdEl.hidden = true;
     rdEl.innerHTML = '<div class="rdGL" id="rdMapF"></div>' +
       '<div class="rdTop"><button class="rdB" id="rdBack">‹ <span></span></button><span style="flex:1"></span>' +
-      '<button class="rdB" id="rdLayerBtn"></button><button class="rdB rdGear" id="rdGear" aria-label="Radar settings">' +
+      '<button class="rdB rdGear" id="rdGear" aria-label="Radar settings">' +
       '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button></div>' +
       '<div class="rdLay" id="rdLay" hidden></div><div class="rdLay" id="rdSet" hidden></div>' +
       '<div class="rdZoom"><button class="rdB" data-z="1">+</button><button class="rdB" data-z="-1">−</button><button class="rdB" data-z="0" aria-label="Back to the place">◎</button></div>' +
-      '<div class="rdBot"><div class="rdRow"><button class="rdPlay" id="rdPlay">▶</button><input type="range" id="rdSlide" min="0" max="' + (RD.N - 1) + '"><span id="rdTimeF"></span></div>' +
-      '<div class="rdLeg" id="rdLeg"></div><div class="rdAttr">Radar: NOAA/NWS · Map: OpenFreeMap, © OpenStreetMap</div></div>';
+      '<div class="rdBot"><div class="rdNote" hidden></div><div class="rdRow"><button class="rdPlay" id="rdPlay">▶</button><input type="range" id="rdSlide" min="0" max="' + (RD.N - 1) + '"><span id="rdTimeF"></span></div>' +
+      '<div class="rdLayName" id="rdLayName"></div><div class="rdLeg" id="rdLeg"></div><div class="rdAttr">Radar: NOAA/NWS · Map: OpenFreeMap, © OpenStreetMap</div></div>';
     document.body.appendChild(rdEl);
     $("rdBack").onclick = rdClose;
     $("rdPlay").onclick = () => rdSetPlay(!rdPlay);
@@ -1639,15 +1711,18 @@ function rdOpen2(){
       if(d === 0) rdMap.easeTo({ center: [PLACE.lng, PLACE.lat], zoom: Math.max(rdMap.getZoom(), 7) });
       else d > 0 ? rdMap.zoomIn() : rdMap.zoomOut();
     };
-    $("rdLayerBtn").onclick = () => { $("rdSet").hidden = true; const m = $("rdLay"); m.hidden = !m.hidden; if(!m.hidden) rdMenu(); };
+    /* build 50: one gear panel - radar type, loop speed, map style */
     $("rdGear").onclick = () => { $("rdLay").hidden = true; const m = $("rdSet"); m.hidden = !m.hidden; if(!m.hidden) rdSetMenu(); };
-    $("rdLay").onclick = e => {
-      const it = e.target.closest("[data-l]"); if(!it) return;
-      const L = RD.layers.find(x => x.id === it.dataset.l);
-      if(!L || L.soon || (L.paid && FREE)) return;          // greyed: does nothing
-      RD.layer = L.id; $("rdLay").hidden = true; rdLoadFrames();
-    };
     $("rdSet").onclick = e => {
+      const l = e.target.closest("[data-l]");
+      if(l){
+        const L = RD.layers.find(x => x.id === l.dataset.l);
+        if(!L || L.soon) return;
+        if(L.paid && FREE){ openUpsell(); return; }
+        RD.layer = L.id; rdLoadFrames(); rdSetMenu(); return;
+      }
+      const sp = e.target.closest("[data-sp]");
+      if(sp){ try { localStorage.setItem("njord.radarSpeed", sp.dataset.sp); } catch(err){} rdSetMenu(); if(rdPlay) rdSetPlay(true); return; }
       const it = e.target.closest("[data-s]"); if(!it) return;
       try { localStorage.setItem("njord.radarStyle", it.dataset.s); } catch(err){}
       $("rdSet").hidden = true;
@@ -1661,6 +1736,7 @@ function rdOpen2(){
   const c = [PLACE.lng, PLACE.lat];
   if(!rdMap){
     rdMap = new maplibregl.Map({ container: "rdMapF", style: rdStyleUrl(rdStyle()), center: c, zoom: 7, attributionControl: false, fadeDuration: 0, dragRotate: false, pitchWithRotate: false });
+    rdWatch(rdMap);
     rdMap.touchZoomRotate.disableRotation();
     rdPin = new maplibregl.Marker({ color: "#4fa3b5" }).setLngLat(c).addTo(rdMap);
     rdMap.on("style.load", () => { rdText(rdMap, RD.TEXT); rdLoadFrames(); });
@@ -1674,7 +1750,8 @@ function rdLoadFrames(){
   rdI = RD.N - 1;
   rdTimesF = rdFrames(rdMap, RD.layer, rdI);
   const L = RD.layers.find(x => x.id === RD.layer);
-  $("rdLayerBtn").textContent = L.name + " ▾";
+  rdCheck(RD.layer); rdNoteSync();
+  $("rdLayName").textContent = L.name;
   $("rdLeg").innerHTML = L.dbz ? '<div class="rdBar">' + RD_LEG.map(c => '<i style="background:' + c + '"></i>').join("") + '</div><div class="rdLk"><span>Light</span><span>Moderate</span><span>Heavy</span><span>Severe</span></div>' : "";
   rdFrame();
 }
@@ -1684,13 +1761,26 @@ function rdMenu(){
   $("rdLay").innerHTML = RD.layers.map(L => {
     const lock = (L.paid && FREE) || L.soon;
     return '<div data-l="' + L.id + '" class="' + (L.id === RD.layer ? "on " : "") + (lock ? "lk" : "") + '"><span>' + (L.paid && FREE ? LOCK_SVG : "") + esc(L.name) + '</span><small>' + esc(L.note) + '</small></div>';
-  }).join("") + (FREE ? '<div class="rdFreeNote">More radar layers are in <b>Njord</b></div>' : "");
+  }).join("") + (FREE ? '<div class="rdFreeNote">More radar layers are coming in <b>Njord</b>, the paid version</div>' : "");
 }
 function rdSetMenu(){
-  const cur = rdStyle();
-  $("rdSet").innerHTML = '<div class="rdHead">Map style</div>' + RD.STYLES.map(x =>
+  const cur = rdStyle(), spd = rdSpeed();
+  $("rdSet").innerHTML =
+    '<div class="rdHead">Radar type</div>' + RD.layers.map(L => {
+      const lock = (L.paid && FREE) || L.soon;
+      return '<div data-l="' + L.id + '" class="' + (L.id === RD.layer ? "on " : "") + (lock ? "lk" : "") + '"><span>' +
+        (L.id === RD.layer ? "✓ " : "") + (L.paid && FREE ? LOCK_SVG : "") + esc(L.name) + '</span><small>' + esc(L.note) + '</small></div>';
+    }).join("") + (FREE ? '<div class="rdFreeNote">More radar layers are coming in <b>Njord</b>, the paid version</div>' : "") +
+    '<div class="rdHead">Loop speed</div><div class="rdSpd">' + RD_SPEEDS.map(x =>
+      '<button data-sp="' + x.id + '" class="' + (x.id === spd ? "on" : "") + '">' + x.name + '</button>').join("") + '</div>' +
+    '<div class="rdHead">Map style</div>' + RD.STYLES.map(x =>
     '<div data-s="' + x.id + '" class="' + (x.id === cur ? "on" : "") + '"><span>' + (x.id === cur ? "✓ " : "") + esc(x.name) + '</span><small>' + esc(x.note) + '</small></div>').join("");
 }
+/* build 50: radar loop speed - time on each frame, and the pause on the newest */
+const RD_SPEEDS = [ { id: "slow", name: "Slow", f: 1000, end: 2600 }, { id: "normal", name: "Normal", f: 500, end: 1600 },
+                    { id: "fast", name: "Fast", f: 280, end: 1100 } ];
+function rdSpeed(){ try { const v = localStorage.getItem("njord.radarSpeed"); if(RD_SPEEDS.some(x => x.id === v)) return v; } catch(e){} return "normal"; }
+const rdSpd = () => RD_SPEEDS.find(x => x.id === rdSpeed());
 function rdFrame(){
   if(!rdMap) return;
   rdShowFrame(rdMap, rdI); $("rdSlide").value = rdI;
@@ -1699,7 +1789,7 @@ function rdFrame(){
 function rdSetPlay(on){
   rdPlay = on; clearTimeout(rdT);
   if(rdEl) $("rdPlay").textContent = on ? "❚❚" : "▶";
-  if(on){ const tick = () => { rdI = (rdI + 1) % RD.N; rdFrame(); rdT = setTimeout(tick, rdI === RD.N - 1 ? 1600 : 500); }; rdT = setTimeout(tick, 500); }
+  if(on){ const tick = () => { const v = rdSpd(); rdI = (rdI + 1) % RD.N; rdFrame(); rdT = setTimeout(tick, rdI === RD.N - 1 ? v.end : v.f); }; rdT = setTimeout(tick, rdSpd().f); }
 }
 
 setInterval(() => render(false), 1000);
@@ -1728,5 +1818,35 @@ setInterval(() => render(false), 1000);
   const nm = document.documentElement.classList.contains("njFree") ? "Njord Free " : "Njord Weather ";
   el.textContent = nm + v + (b ? "  \u00b7  build " + b : "");
   el.hidden = false;
+})();
+
+/* app build 49: hidden developer switch (Njord only). Tap the build line in
+   About 7 times to show it; "Run as Njord Free" restarts the app as Free, so
+   the Free experience can be tested without installing the second app. */
+(function(){
+  const NA = window.NjordAndroid, el = document.getElementById("appVer");
+  let can = false; try { can = !!(NA && NA.canSwitchEdition && NA.canSwitchEdition()); } catch(e){}
+  if(!el || !can) return;
+  let FREE = false; try { FREE = !!NA.isFree(); } catch(e){}    // (this block sits outside the main one)
+  const njNote = window.njNote || (() => {});
+  const box = document.createElement("div");
+  box.id = "devBox";
+  box.innerHTML = '<div class="devH">Developer</div>' +
+    '<label class="devRow"><span>Run as Njord Free</span><input type="checkbox" id="devFree"></label>' +
+    '<div class="devNote">Restarts the app. Widgets follow on their next update.</div>';
+  const shown = (() => { try { return localStorage.getItem("njDev") === "1"; } catch(e){ return false; } })();
+  box.hidden = !shown && !FREE;
+  el.parentNode.insertBefore(box, el.nextSibling);
+  const cb = box.querySelector("#devFree");
+  cb.checked = FREE;
+  cb.addEventListener("change", () => { try { NA.setDevFree(cb.checked); } catch(e){} });
+  let taps = 0, tT = 0;
+  el.addEventListener("click", () => {
+    clearTimeout(tT); tT = setTimeout(() => taps = 0, 1500);
+    if(++taps >= 7 && box.hidden){
+      box.hidden = false; try { localStorage.setItem("njDev", "1"); } catch(e){}
+      njNote("Developer options are on.");
+    }
+  });
 })();
 

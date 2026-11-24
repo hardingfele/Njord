@@ -209,23 +209,27 @@ function compose(){
     c.restore();
   };
   /* "Updated: 12:09p" and a refresh arrow; the app puts its tap target over it */
-  const updatedLine = (x, yBase, size) => {
-    const t = (() => { const p = zonedParts(new Date(), PLACE.tz); return hm(p.hour*60 + p.minute); })();
-    const uw = txt("Updated: " + t, x, yBase, size, 400, "left", .85);
-    /* a circular arrow: open at the top right, arrowhead pointing on round
-       (build 30's hooked line read as a "G") */
-    const cx = x + uw + 10, cy = yBase - 3.5, r = 4, a0 = -Math.PI*0.42, a1 = a0 + Math.PI*1.62;
-    c.save(); c.strokeStyle = c.fillStyle = "rgba(255,255,255,.92)"; c.lineWidth = 1.4; c.lineCap = "round";
+  /* a circular arrow: open at the top right, arrowhead pointing on round
+     (build 30's hooked line read as a "G"); k scales it (build 51: big, top right) */
+  const refreshMark = (cx, cy, k) => {
+    k = k || 1;
+    const r = 4*k, a0 = -Math.PI*0.42, a1 = a0 + Math.PI*1.62, A = 2.3*k, F = 2.4*k, Bk = 1.1*k;
+    c.save(); c.strokeStyle = c.fillStyle = "rgba(255,255,255,.92)"; c.lineWidth = 1.4*Math.sqrt(k); c.lineCap = "round";
     c.shadowColor = "rgba(0,0,0,.75)"; c.shadowBlur = 5;
     c.beginPath(); c.arc(cx, cy, r, a0, a1); c.stroke();
     const ex = cx + r*Math.cos(a1), ey = cy + r*Math.sin(a1), tx = -Math.sin(a1), ty = Math.cos(a1), nx = Math.cos(a1), ny = Math.sin(a1);
-    c.beginPath(); c.moveTo(ex + tx*2.4, ey + ty*2.4);
-    c.lineTo(ex - tx*1.1 + nx*2.3, ey - ty*1.1 + ny*2.3); c.lineTo(ex - tx*1.1 - nx*2.3, ey - ty*1.1 - ny*2.3);
+    c.beginPath(); c.moveTo(ex + tx*F, ey + ty*F);
+    c.lineTo(ex - tx*Bk + nx*A, ey - ty*Bk + ny*A); c.lineTo(ex - tx*Bk - nx*A, ey - ty*Bk - ny*A);
     c.closePath(); c.fill();
     c.restore();
-    /* the tap target sits on the arrow (56 x 40 dp, as in the layout file); build 34's
-       started at "Updated" and stopped short of the arrow */
-    pill = { x: cx - 32, y: cy - 20, w: 56, h: 40 };
+    /* the tap target sits on the arrow (56 x 40 dp, as in the layout file) */
+    pill = { x: cx - 28, y: cy - 20, w: 56, h: 40 };
+  };
+  /* "Updated: 12:09p", with the refresh arrow after it unless noArrow */
+  const updatedLine = (x, yBase, size, noArrow) => {
+    const t = (() => { const p = zonedParts(new Date(), PLACE.tz); return hm(p.hour*60 + p.minute); })();
+    const uw = txt("Updated: " + t, x, yBase, size, 400, "left", .85);
+    if(!noArrow) refreshMark(x + uw + 10, yBase - 3.5, 1);
   };
   /* the footer's sun: a disc with short rays, as big as the moon on the right
      (the app's own weather glyph read as a flower at this size). Widget only. */
@@ -326,21 +330,27 @@ function compose(){
     if(HERE) pin(P + 4, 16.5);
     const nm = fit(place, 12, 600, (CLOCK ? Wd*0.6 - P : Wd*0.55 - 40) - (px - P));
     txt(nm, px, 21, 12, 600);
-    txt(WX.temp + "°", P - 1, 60, 40, 300);
+    /* build 51: the weather icon sits behind the temperature, which moves over to fit */
+    glyph(WX.code, P + 15, 44, 13.5, night);
+    /* a three-digit or below-zero temperature grows to the right, away from the
+       icon; on a narrow widget it shrinks rather than run under Android's clock */
+    { const ts = WX.temp + "°", room = (CLOCK ? Wd/2 - 42 : Wd*0.55) - (P + 33);
+      c.font = "300 40px " + FT; const tw0 = c.measureText(ts).width;
+      txt(ts, P + 33, 60, tw0 > room ? Math.max(30, 40*room/tw0) : 40, 300); }
     txt(fit(cond, 12, 400, Wd*0.5), P, 77, 12, 400, "left", .92);
-    updatedLine(P, 93, 10.5);
+    updatedLine(P, 93, 10.5, true);
     const al = topAlert();
     if(al){
       c.font = "700 10.5px " + FT;
       const label = fit(al.txt + (al.more > 0 ? "  +" + al.more : ""), 10.5, 700, Wd*0.45);
       const w = c.measureText(label).width + 16;
       c.save(); c.fillStyle = al.col; c.beginPath();
-      /* top right, in place of the weather icon (the condition is written on the left) */
-      const ax = Wd - P - w; c.roundRect ? c.roundRect(ax, 6, w, 17, 8.5) : c.rect(ax, 6, w, 17); c.fill();
+      /* top right, beside the refresh button (build 51) */
+      const ax = Wd - P - w - 34; c.roundRect ? c.roundRect(ax, 6, w, 17, 8.5) : c.rect(ax, 6, w, 17); c.fill();
       c.fillStyle = "#fff"; c.textBaseline = "middle"; c.fillText(label, ax + 8, 15); c.restore();
     }
-    /* top right: icon, high / low, wind */
-    if(!al) glyph(WX.code, Wd - P - 18, 24, 13, night);
+    /* top right: refresh (build 51: where the icon was, bigger), high / low, wind */
+    refreshMark(Wd - P - 11, 20, 2.1);
     /* high over low, then the wind on the same line as "Updated" */
     if(d0){ txt("H " + d0.hi + "°", Wd - P, 60, 15.5, 600, "right"); txt("L " + d0.lo + "°", Wd - P, 78, 15.5, 600, "right"); }
     rightWind(93, true);
@@ -361,16 +371,20 @@ function compose(){
     } catch(e){}
     /* the next hours, evenly across, just above the footer */
     const hrs = nextHours(Math.max(4, Math.min(7, Math.floor((Wd - 2*P)/50) + 1))), n = hrs.length;
-    const top = Math.max(100, fy - 92), span = Wd - 2*P;
+    /* build 51: on a short widget the rows tighten so the chance of rain/snow
+       clears the sun and moon line instead of running into it */
+    const tight = fy - 92 < 100;
+    const top = tight ? 96 : fy - 92, span = Wd - 2*P;
+    const O = tight ? [13, 29, 54, 67] : [13, 31, 58, 73];
     hrs.forEach((h, i) => {
       const x = P + (n > 1 ? span*i/(n - 1) : span/2);
       const al = i === 0 ? "left" : i === n - 1 ? "right" : "center";
       const gx = al === "left" ? x + 12 : al === "right" ? x - 12 : x;
-      txt(h.lab, gx, top + 13, 14, 400, "center", .95);
-      glyph(h.code, gx, top + 31, 9.6, h.night);
-      txt(h.temp + "°", gx, top + 58, 16, 600, "center");
+      txt(h.lab, gx, top + O[0], 14, 400, "center", .95);
+      glyph(h.code, gx, top + O[1], 9.6, h.night);
+      txt(h.temp + "°", gx, top + O[2], 16, 600, "center");
       if(h.pop) { c.save(); c.font = "500 12.5px " + FT; c.fillStyle = "#9fd0ff"; c.textAlign = "center";
-                  c.shadowColor = "rgba(0,0,0,.5)"; c.shadowBlur = 3; c.fillText(h.pop, gx, top + 73); c.restore(); }
+                  c.shadowColor = "rgba(0,0,0,.5)"; c.shadowBlur = 3; c.fillText(h.pop, gx, top + O[3]); c.restore(); }
     });
   }
   let png = "";
