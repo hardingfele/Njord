@@ -494,12 +494,12 @@ html:not(.phone) #phPlacesH, html:not(.phone) #phPlaces { display: none; }
 .gfU { font: 600 9.5px Figtree, system-ui, sans-serif; fill: rgba(200,214,236,.75); }
 .gfKey { font: 600 10px Figtree, system-ui, sans-serif; }
 
-/* build 52: data drawer from the right */
-.gfDrawer { position: absolute; top: 0; right: 0; bottom: 0; width: min(270px, 78vw); background: rgba(16,24,40,.98);
-  border-left: 1px solid rgba(160,190,235,.16); box-shadow: -10px 0 30px rgba(0,0,0,.45); transform: translateX(105%);
-  transition: transform .22s ease; display: flex; flex-direction: column; padding-top: calc(12px + env(safe-area-inset-top)); z-index: 2; }
+/* build 52: data drawer from the left */
+.gfDrawer { position: absolute; top: 0; left: 0; bottom: 0; width: min(270px, 78vw); background: rgba(16,24,40,.98);
+  border-right: 1px solid rgba(160,190,235,.16); box-shadow: 10px 0 30px rgba(0,0,0,.45); transform: translateX(-105%);
+  transition: transform .22s ease; display: flex; flex-direction: column; padding-top: calc(12px + env(safe-area-inset-top)); z-index: 3; }
 .gfDrawer.open { transform: none; }
-.gfShade { position: absolute; inset: 0; background: rgba(0,0,0,.35); z-index: 1; }
+.gfShade { position: absolute; inset: 0; background: rgba(0,0,0,.5); z-index: 2; }
 .gfShade[hidden] { display: none; }
 .gfDHead { display: flex; justify-content: space-between; align-items: center; padding: 6px 14px 10px;
   font: 600 11px/1 Figtree, system-ui, sans-serif; letter-spacing: .14em; text-transform: uppercase; color: rgba(170,190,220,.75); }

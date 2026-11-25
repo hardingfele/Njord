@@ -1060,9 +1060,9 @@ function gfOpen(){
   let el = $("gfFull");
   if(!el){
     el = document.createElement("div"); el.id = "gfFull";
-    /* build 52: the data list slides out from the right, so the graph gets the whole screen */
-    el.innerHTML = '<div class="gfTop"><button class="rdB" id="gfBack">‹ <span></span></button><span class="gfTitle">Hourly graph</span>' +
-      '<span style="flex:1"></span><button class="rdB" id="gfData">Data ›</button></div>' +
+    /* build 52: the data list slides out from the left, so the graph gets the whole screen */
+    el.innerHTML = '<div class="gfTop"><button class="rdB" id="gfBack">‹ <span></span></button><button class="rdB" id="gfData">☰ Data</button>' +
+      '<span class="gfTitle">Hourly graph</span></div>' +
       '<div class="gfRead"></div><div class="gfBody"><div class="gfAxis"></div><div class="gfScroll"></div></div>' +
       '<div class="gfShade" hidden></div><div class="gfDrawer"><div class="gfDHead">Data<button id="gfDClose" aria-label="Close">✕</button></div><div class="gfChips"></div></div>';
     document.body.appendChild(el);
