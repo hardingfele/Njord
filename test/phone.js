@@ -1060,10 +1060,18 @@ function gfOpen(){
   let el = $("gfFull");
   if(!el){
     el = document.createElement("div"); el.id = "gfFull";
-    el.innerHTML = '<div class="gfTop"><button class="rdB" id="gfBack">‹ <span></span></button><span class="gfTitle">Hourly graph</span></div>' +
-      '<div class="gChips gfChips"></div><div class="gfRead"></div><div class="gfBody"><div class="gfAxis"></div><div class="gfScroll"></div></div>';
+    /* build 52: the data list slides out from the right, so the graph gets the whole screen */
+    el.innerHTML = '<div class="gfTop"><button class="rdB" id="gfBack">‹ <span></span></button><span class="gfTitle">Hourly graph</span>' +
+      '<span style="flex:1"></span><button class="rdB" id="gfData">Data ›</button></div>' +
+      '<div class="gfRead"></div><div class="gfBody"><div class="gfAxis"></div><div class="gfScroll"></div></div>' +
+      '<div class="gfShade" hidden></div><div class="gfDrawer"><div class="gfDHead">Data<button id="gfDClose" aria-label="Close">✕</button></div><div class="gfChips"></div></div>';
     document.body.appendChild(el);
     $("gfBack").onclick = gfClose;
+    const drawer = el.querySelector(".gfDrawer"), shade = el.querySelector(".gfShade");
+    const dOpen = on => { drawer.classList.toggle("open", on); shade.hidden = !on; };
+    $("gfData").onclick = () => dOpen(true);
+    $("gfDClose").onclick = shade.onclick = () => dOpen(false);
+    el.gfDrawer = dOpen;
     el.querySelector(".gfChips").onclick = e => {
       const b = e.target.closest("[data-g]"); if(!b) return;
       let a = gfSel(); a = a.includes(b.dataset.g) ? a.filter(x => x !== b.dataset.g) : a.concat(b.dataset.g);
@@ -1090,7 +1098,7 @@ function gfOpen(){
   gfHistory();
   gfDraw(false, true);
 }
-function gfClose(){ const el = $("gfFull"); if(el) el.hidden = true; }
+function gfClose(){ const el = $("gfFull"); if(el){ el.hidden = true; if(el.gfDrawer) el.gfDrawer(false); } }
 const gfOpenNow = () => { const el = $("gfFull"); return !!(el && !el.hidden); };
 window.addEventListener("resize", () => { if(gfOpenNow()) gfDraw(true); });
 function gfDraw(keepScroll, toNow){
@@ -1117,6 +1125,7 @@ function gfDraw(keepScroll, toNow){
   const sel = gfSel().filter(id => avail.some(k => k.id === id));
   el.querySelector(".gfChips").innerHTML = avail.map(k => '<button data-g="' + k.id + '" class="' + (sel.includes(k.id) ? "on" : "") +
     '" style="--c:' + G_COL[k.id] + '"><i></i>' + k.name + (k.get2 ? " + gusts" : "") + '</button>').join("");
+  const legend = KINDS.filter(k => sel.includes(k.id)).map(k => '<span style="color:' + G_COL[k.id] + '">● ' + esc(k.name) + '</span>').join("  ");
   const sc = el.querySelector(".gfScroll"), prevX = sc.scrollLeft;
   if(!win.length){ sc.innerHTML = ""; return; }
   const panels = GF_PANELS.filter(pn => pn.kinds.some(id => sel.includes(id)));
@@ -1237,7 +1246,7 @@ function gfDraw(keepScroll, toNow){
     const when = i === P0 ? "Now" : (h.past ? "Measured " : "") + dayName(h.time) + " " + shortTime(hr*60);
     rd.innerHTML = '<b>' + esc(when) + '</b> ' + (parts.join(" · ") || '<span class="sub">no report</span>');
   };
-  rd.innerHTML = '<span class="sub">Tap to read an hour · swipe for more · pinch to zoom</span>';
+  rd.innerHTML = legend + '<br><span class="sub">Tap to read an hour · swipe for more · pinch to zoom</span>';
 }
 function dayName(t){
   const d = new Date(String(t).slice(0, 10) + "T12:00:00Z");
@@ -1433,7 +1442,7 @@ top.addEventListener("click", e => {
 
 /* Android back button: close what is open, then scroll the sheet home */
 window.njordBack = function(){
-  if(gfOpenNow()){ gfClose(); return true; }
+  if(gfOpenNow()){ const el = $("gfFull"); if(el.querySelector(".gfDrawer.open")) el.gfDrawer(false); else gfClose(); return true; }
   if(rdOpenNow()){ if(!$("rdLay").hidden) $("rdLay").hidden = true; else if(!$("rdSet").hidden) $("rdSet").hidden = true; else rdClose(); return true; }
   if(upsellOpen()){ closeUpsell(); return true; }
   if(!alertSheet.hidden){ closeAlerts(); return true; }

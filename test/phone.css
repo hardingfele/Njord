@@ -470,7 +470,7 @@ html:not(.phone) #phPlacesH, html:not(.phone) #phPlaces { display: none; }
 #gfFull[hidden] { display: none; }
 .gfTop { display: flex; align-items: center; gap: 10px; padding: 0 10px 8px; }
 .gfTitle { font: 600 11px/1 Figtree, system-ui, sans-serif; letter-spacing: .14em; text-transform: uppercase; color: rgba(170,190,220,.72); }
-#gfFull .gfChips { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 10px 8px; }
+#gfFull .gfChips { display: flex; flex-direction: column; gap: 8px; padding: 4px 14px 14px; overflow-y: auto; }
 #gfFull .gfChips button { padding: 6px 10px; border-radius: 14px; border: 1px solid rgba(160,190,235,.18); background: rgba(255,255,255,.04);
   color: rgba(226,234,246,.7); font: 500 13px/1 Figtree, system-ui, sans-serif; display: flex; align-items: center; gap: 6px; }
 #gfFull .gfChips button i { width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--c); }
@@ -493,3 +493,15 @@ html:not(.phone) #phPlacesH, html:not(.phone) #phPlaces { display: none; }
 .gfFz { font: 500 9.5px Figtree, system-ui, sans-serif; fill: #90c3f2; opacity: .8; }
 .gfU { font: 600 9.5px Figtree, system-ui, sans-serif; fill: rgba(200,214,236,.75); }
 .gfKey { font: 600 10px Figtree, system-ui, sans-serif; }
+
+/* build 52: data drawer from the right */
+.gfDrawer { position: absolute; top: 0; right: 0; bottom: 0; width: min(270px, 78vw); background: rgba(16,24,40,.98);
+  border-left: 1px solid rgba(160,190,235,.16); box-shadow: -10px 0 30px rgba(0,0,0,.45); transform: translateX(105%);
+  transition: transform .22s ease; display: flex; flex-direction: column; padding-top: calc(12px + env(safe-area-inset-top)); z-index: 2; }
+.gfDrawer.open { transform: none; }
+.gfShade { position: absolute; inset: 0; background: rgba(0,0,0,.35); z-index: 1; }
+.gfShade[hidden] { display: none; }
+.gfDHead { display: flex; justify-content: space-between; align-items: center; padding: 6px 14px 10px;
+  font: 600 11px/1 Figtree, system-ui, sans-serif; letter-spacing: .14em; text-transform: uppercase; color: rgba(170,190,220,.75); }
+.gfDHead button { background: none; border: 0; color: #e8eef8; font-size: 18px; padding: 4px 6px; }
+#gfFull .gfChips button { justify-content: flex-start; padding: 10px 12px; font-size: 14.5px; border-radius: 12px; }
