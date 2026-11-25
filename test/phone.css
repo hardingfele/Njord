@@ -522,3 +522,6 @@ html:not(.phone) #phPlacesH, html:not(.phone) #phPlaces { display: none; }
 .gfRead::-webkit-scrollbar { display: none; }
 .gfRead { min-height: 22px; }
 .gfPull i { left: 4px; width: 6px; box-sizing: border-box; }
+
+/* build 53: graph zoom buttons */
+#gfFull .gfTop .gfZ { width: 36px; padding: 6px 0; font-size: 18px; line-height: 1; text-align: center; }

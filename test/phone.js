@@ -1069,7 +1069,8 @@ function gfOpen(){
   if(!el){
     el = document.createElement("div"); el.id = "gfFull";
     /* build 52: the data list slides out from the left, so the graph gets the whole screen */
-    el.innerHTML = '<div class="gfTop"><button class="rdB" id="gfBack">‹ <span></span></button><span class="gfTitle">Hourly graph</span></div>' +
+    el.innerHTML = '<div class="gfTop"><button class="rdB" id="gfBack">‹ <span></span></button><span class="gfTitle">Hourly graph</span>' +
+      '<span style="flex:1"></span><button class="rdB gfZ" id="gfOut" aria-label="Zoom out">−</button><button class="rdB gfZ" id="gfIn" aria-label="Zoom in">+</button></div>' +
       '<button class="gfPull" id="gfData" aria-label="Choose data"><i></i></button>' +
       '<div class="gfRead"></div><div class="gfBody"><div class="gfAxis"></div><div class="gfScroll"></div></div>' +
       '<div class="gfShade" hidden></div><div class="gfDrawer"><div class="gfDHead">Data<button id="gfDClose" aria-label="Close">✕</button></div><div class="gfChips"></div></div>';
@@ -1096,8 +1097,19 @@ function gfOpen(){
       try { localStorage.setItem("njord.graphMulti", JSON.stringify(a)); } catch(err){}
       gfDraw(true);
     };
-    /* pinch to zoom: hour width 5-36 px, keeping the hour under the fingers in place */
-    const sc = el.querySelector(".gfScroll"); let pin = null;
+    /* build 53: + / − zoom (hour width 5-36 px), keeping the middle hour in place */
+    const sc = el.querySelector(".gfScroll");
+    const zoom = f => {
+      const mid = sc.clientWidth/2, hour = (sc.scrollLeft + mid - 10)/GF_PX;
+      GF_PX = Math.max(5, Math.min(36, GF_PX*f)); gfDraw(false);
+      sc.scrollLeft = hour*GF_PX + 10 - mid;
+      try { localStorage.setItem("njord.graphPx", String(GF_PX)); } catch(err){}
+    };
+    $("gfIn").onclick = () => zoom(1.4);
+    $("gfOut").onclick = () => zoom(1/1.4);
+    /* pinch to zoom in the Android app only (the web app uses + / −) */
+    let pin = null;
+    if(window.NjordAndroid){
     sc.addEventListener("touchstart", e => { if(e.touches.length === 2){
       const d = Math.abs(e.touches[0].clientX - e.touches[1].clientX), mid = (e.touches[0].clientX + e.touches[1].clientX)/2 - sc.getBoundingClientRect().left;
       pin = { d: Math.max(d, 20), px: GF_PX, hour: (sc.scrollLeft + mid - 10)/GF_PX, mid }; } }, { passive: true });
@@ -1108,6 +1120,7 @@ function gfOpen(){
       if(Math.abs(px - GF_PX) > 0.4){ GF_PX = px; gfDraw(false); sc.scrollLeft = pin.hour*GF_PX + 10 - pin.mid; }
     } }, { passive: false });
     sc.addEventListener("touchend", e => { if(e.touches.length < 2){ if(pin){ try { localStorage.setItem("njord.graphPx", String(GF_PX)); } catch(err){} } pin = null; } });
+    } else sc.style.touchAction = "pan-x";
     try { const px = +localStorage.getItem("njord.graphPx"); if(px >= 5 && px <= 36) GF_PX = px; } catch(e){}
   }
   el.hidden = false;
