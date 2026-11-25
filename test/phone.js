@@ -1067,12 +1067,13 @@ function gfHistory(){
 function gfOpen(){
   let el = $("gfFull");
   if(!el){
+    if(!window.NjordAndroid) document.documentElement.classList.add("njWeb");
     el = document.createElement("div"); el.id = "gfFull";
     /* build 52: the data list slides out from the left, so the graph gets the whole screen */
     el.innerHTML = '<div class="gfTop"><button class="rdB" id="gfBack">‹ <span></span></button><span class="gfTitle">Hourly graph</span>' +
       '<span style="flex:1"></span><button class="rdB gfZ" id="gfOut" aria-label="Zoom out">−</button><button class="rdB gfZ" id="gfIn" aria-label="Zoom in">+</button></div>' +
       '<button class="gfPull" id="gfData" aria-label="Choose data"><i></i></button>' +
-      '<div class="gfRead"></div><div class="gfBody"><div class="gfAxis"></div><div class="gfScroll"></div></div>' +
+      '<div class="gfReadWrap"><div class="gfRead"></div><span class="gfMoreArrow">▾ more</span></div><div class="gfBody"><div class="gfAxis"></div><div class="gfScroll"></div></div>' +
       '<div class="gfShade" hidden></div><div class="gfDrawer"><div class="gfDHead">Data<button id="gfDClose" aria-label="Close">✕</button></div><div class="gfChips"></div></div>';
     document.body.appendChild(el);
     $("gfBack").onclick = gfClose;
@@ -1144,6 +1145,14 @@ function gfOpen(){
   $("gfBack").querySelector("span").textContent = PLACE.short || PLACE.name || "";
   gfHistory();
   gfDraw(false, true);
+}
+/* build 53: the legend / reading line is at most two lines; when there is more,
+   a fade and a small arrow show it scrolls */
+function gfMore(){
+  const rd = $("gfFull") && $("gfFull").querySelector(".gfRead"); if(!rd) return;
+  const upd = () => { const m = rd.scrollHeight - rd.scrollTop - rd.clientHeight > 2;
+                      rd.classList.toggle("more", m); rd.parentNode.classList.toggle("more", m); };
+  rd.onscroll = upd; requestAnimationFrame(upd);
 }
 function gfClose(){ const el = $("gfFull"); if(el){ el.hidden = true; if(el.gfDrawer) el.gfDrawer(false); } }
 const gfOpenNow = () => { const el = $("gfFull"); return !!(el && !el.hidden); };
@@ -1293,9 +1302,9 @@ function gfDraw(keepScroll, toNow){
              (k.get2 && k.get2(h) != null ? " (gusts " + k.get2(h) + ")" : "") + '</span>';
     }).filter(Boolean);
     const when = i === P0 ? "Now" : (h.past ? "Measured " : "") + dayName(h.time) + " " + shortTime(hr*60);
-    rd.innerHTML = '<b>' + esc(when) + '</b> ' + (parts.join(" · ") || '<span class="sub">no report</span>');
+    rd.innerHTML = '<b>' + esc(when) + '</b> ' + (parts.join(" · ") || '<span class="sub">no report</span>'); gfMore();
   };
-  rd.innerHTML = legend;
+  rd.innerHTML = legend; gfMore();
 }
 /* wind arrows on the graph. Normal: a weathervane arrow (tail + open head)
    pointing where the wind is going, like TV weather and the Wind card.

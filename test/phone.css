@@ -528,3 +528,15 @@ html:not(.phone) #phPlacesH, html:not(.phone) #phPlaces { display: none; }
 
 /* build 53: two fingers never zoom the page itself on the graph - only the time axis (app) */
 #gfFull, #gfFull .gfBody { touch-action: pan-x; }
+
+/* build 53: graph heading higher in the browser (Chrome reports a top inset
+   there that the address bar already covers); legend at most two lines,
+   scrolls with a fade + arrow when there is more */
+html.njWeb #gfFull { padding-top: 6px; }
+#gfFull .gfRead { white-space: normal; overflow-x: hidden; overflow-y: auto; max-height: 2.7em; line-height: 1.35;
+  min-height: 0; position: relative; padding-right: 22px; font-size: 13px; }
+#gfFull .gfRead > span { white-space: nowrap; margin-right: 10px; }
+#gfFull .gfRead.more { -webkit-mask-image: linear-gradient(#000 60%, transparent); mask-image: linear-gradient(#000 60%, transparent); }
+#gfFull .gfReadWrap { position: relative; }
+#gfFull .gfMoreArrow { position: absolute; right: 8px; bottom: 2px; font-size: 13px; color: rgba(220,232,250,.8); pointer-events: none; display: none; }
+#gfFull .gfReadWrap.more .gfMoreArrow { display: block; background: rgba(20,32,54,.9); border-radius: 8px; padding: 1px 6px; font-weight: 600; }
