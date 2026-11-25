@@ -398,7 +398,9 @@ html:not(.phone) #phPlacesH, html:not(.phone) #phPlaces { display: none; }
 #phRadar .rdTime { z-index: 2; }
 .rdGear { padding: 8px 10px; display: flex; align-items: center; }
 .rdLay .rdHead { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: #8aa3b8; cursor: default; padding-bottom: 4px; }
-.rdTop, .rdZoom, .rdBot, .rdLay { z-index: 3; }
+.rdTop, .rdZoom, .rdBot { z-index: 3; }
+/* build 52: the open menus sit over the zoom buttons, not under them */
+.rdLay { z-index: 5; }
 /* build 40: the map library's own CSS (loaded later) sets .maplibregl-map to
    position:relative, which undid inset:0 and left the map 0px tall - blank */
 #rdFull .rdGL, #phRadar .rdGL { position: absolute !important; inset: 0; width: 100%; height: 100%; }
@@ -441,3 +443,46 @@ html:not(.phone) #phPlacesH, html:not(.phone) #phPlaces { display: none; }
 .rdSpd button.on { background: rgba(120,224,242,.22); border-color: rgba(120,224,242,.7); }
 .rdLayName { font: 600 12.5px/1.2 Figtree, system-ui, sans-serif; opacity: .85; margin: 2px 0 4px; }
 #rdSet { max-height: 70vh; overflow-y: auto; }
+
+/* build 52: pressure / visibility cards, hourly graph */
+.big small { font-size: 15px; color: rgba(220,230,245,.8); font-weight: 500; }
+.grid2 .pc { position: relative; }
+.spark { display: block; width: 100%; height: 30px; margin-top: 6px; }
+.sparkDot { position: absolute; width: 0; height: 0; }
+.vbar { position: relative; height: 5px; border-radius: 3px; margin: 12px 0 4px; background: rgba(255,255,255,.08); overflow: hidden; }
+.vbar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; background: #90c3f2; }
+#phGraph .gChips { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; margin: 0 -16px 8px; padding: 0 16px; }
+#phGraph .gChips::-webkit-scrollbar { display: none; }
+#phGraph .gChips button { flex: 0 0 auto; padding: 6px 11px; border-radius: 14px; border: 1px solid rgba(160,190,235,.18);
+  background: rgba(255,255,255,.05); color: rgba(226,234,246,.88); font: 500 13px/1 Figtree, system-ui, sans-serif; }
+#phGraph .gChips button.on { background: rgba(120,224,242,.2); border-color: rgba(120,224,242,.65); color: #fff; }
+#phGraph .gWrap { position: relative; }
+#phGraph .gSvg { width: 100%; height: auto; display: block; touch-action: pan-y; }
+#phGraph .gT { font: 400 9px Figtree, system-ui, sans-serif; fill: rgba(200,214,236,.65); text-anchor: middle; }
+#phGraph .gD { font: 600 9px Figtree, system-ui, sans-serif; fill: rgba(200,214,236,.75); }
+#phGraph .gV { font: 600 10px Figtree, system-ui, sans-serif; fill: #fff; text-anchor: middle; }
+#phGraph .gRead { position: absolute; top: -2px; right: 0; font: 600 12.5px/1 Figtree, system-ui, sans-serif; color: #fff; }
+
+/* build 52: full-screen graph */
+#gfFull { position: fixed; inset: 0; z-index: 8400; background: linear-gradient(#152036, #0b111d 70%); color: #e8eef8;
+  display: flex; flex-direction: column; font: 400 14px/1.4 Figtree, system-ui, sans-serif;
+  padding: calc(12px + env(safe-area-inset-top)) 0 calc(10px + env(safe-area-inset-bottom)); }
+#gfFull[hidden] { display: none; }
+.gfTop { display: flex; align-items: center; gap: 10px; padding: 0 10px 8px; }
+.gfTitle { font: 600 11px/1 Figtree, system-ui, sans-serif; letter-spacing: .14em; text-transform: uppercase; color: rgba(170,190,220,.72); }
+#gfFull .gfChips { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 10px 8px; }
+#gfFull .gfChips button { padding: 6px 10px; border-radius: 14px; border: 1px solid rgba(160,190,235,.18); background: rgba(255,255,255,.04);
+  color: rgba(226,234,246,.7); font: 500 13px/1 Figtree, system-ui, sans-serif; display: flex; align-items: center; gap: 6px; }
+#gfFull .gfChips button i { width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--c); }
+#gfFull .gfChips button.on { color: #fff; border-color: var(--c); background: rgba(255,255,255,.08); }
+#gfFull .gfChips button.on i { background: var(--c); }
+.gfRead { min-height: 36px; padding: 0 12px 6px; font-size: 12.5px; line-height: 1.35; }
+.gfRead b { color: #fff; margin-right: 4px; }
+.gfBody { flex: 1; display: flex; min-height: 0; overflow: hidden; }
+.gfAxis { flex: 0 0 34px; }
+.gfScroll { flex: 1; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; touch-action: pan-x; }
+.gfScroll::-webkit-scrollbar { display: none; }
+.gfT { font: 400 10.5px Figtree, system-ui, sans-serif; fill: rgba(200,214,236,.65); text-anchor: middle; }
+.gfDay { font: 600 11px Figtree, system-ui, sans-serif; fill: rgba(220,230,245,.85); }
+.gfV { font: 600 11px Figtree, system-ui, sans-serif; text-anchor: middle; }
+.gfA { font: 400 10.5px Figtree, system-ui, sans-serif; fill: rgba(200,214,236,.6); text-anchor: end; }

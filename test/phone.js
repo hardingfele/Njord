@@ -56,6 +56,7 @@ ph.innerHTML =
     '<section class="pc" id="phHourly"><h3>Next 24 hours <a class="jump" id="phJump">' + (FREE ? '7-day' : '10-day') + ' &rsaquo;</a></h3><div class="sum24"></div><div class="hrs"></div></section>' +
     '<section class="pc" id="phRadar" hidden><h3>Radar <a class="jump" id="phRadarJump">Full map &rsaquo;</a></h3>' +
       '<div class="rdMap" id="phRadarMap"><div class="rdGL"></div><span class="rdTime"></span></div><div class="rdNote" hidden></div></section>' +
+    '<section class="pc" id="phGraph" hidden></section>' +
     '<div class="grid2" id="phDetails"></div>' +
     '<section class="pc" id="phSky" style="margin-top:12px"></section>' +
     '<section class="pc" id="phDays"><h3>' + (FREE ? '7-day' : '10-day') + ' forecast <span class="tapHint">tap a day</span></h3><div class="days"></div></section>' +
@@ -150,6 +151,7 @@ function render(force){
   const ss = [PLACE.lat, PLACE.lng, p.hour, Math.floor(p.minute/10), CONFIG.clock, typeof AUR === "object" && AUR ? AUR.kpAt + "/" + AUR.ovAt : ""].join("|");
   if(WX && (force || ss !== skySig)){ skySig = ss; renderSky(); renderAurora(); }
   const ds = [PLACE.lat, PLACE.lng, p.hour, wxGen, CONFIG.units, CONFIG.clock, loadPlaces().length, STORE.get("weather.home") || "",
+              CONFIG.showGraph, CONFIG.cardPress, CONFIG.cardVis, OBS_PV ? OBS_PV.t : 0,
               SCENE ? Math.round(SCENE.phase.illum*100) : -1].join("|");
   if(!force && ds === dataSig) return;
   dataSig = ds;
@@ -158,10 +160,10 @@ function render(force){
     $("phHourly").querySelector(".hrs").innerHTML = '<div class="sub" style="padding:8px 16px">Loading forecast…</div>';
     $("phHourly").querySelector(".sum24").innerHTML = "";
     $("phDays").querySelector(".days").innerHTML = "";
-    $("phDetails").innerHTML = ""; $("phSky").innerHTML = "";
+    $("phDetails").innerHTML = ""; $("phSky").innerHTML = ""; $("phGraph").hidden = true;
     return;
   }
-  renderHours(); renderDetails(); renderDays(); renderSky(); renderAurora(); skySig = "";
+  renderHours(); renderGraph(); renderDetails(); renderDays(); renderSky(); renderAurora(); skySig = "";
   loadAfd();
 }
 
@@ -880,8 +882,256 @@ function renderDetails(){
     const amt = d0.amt != null && d0.amt > 0 ? (CONFIG.units === "imperial" ? d0.amt.toFixed(2) + " in" : d0.amt.toFixed(1) + " mm") + " expected" : "None expected";
     html.push(card("Precipitation", (d0.pop != null ? Math.round(d0.pop) : 0) + "%", "Chance today<br>" + amt));
   }
+  /* build 52: pressure and visibility, from the nearest station's latest report */
+  const pv = OBS_PV, metric = CONFIG.units !== "imperial";
+  if(CONFIG.cardPress && pv && pv.hpa != null){
+    const val = metric ? Math.round(pv.hpa) + ' <small>hPa</small>' : (pv.hpa*0.02953).toFixed(2) + ' <small>in</small>';
+    let trend = "";
+    if(pv.trend != null){
+      const d = pv.trend, amt = metric ? Math.abs(d).toFixed(1) + " hPa" : Math.abs(d*0.02953).toFixed(2) + " in";
+      trend = Math.abs(d) < 0.6 ? "→ Steady over 3 hrs"
+            : (d < 0 ? "↓ Falling" : "↑ Rising") + (Math.abs(d) >= 3 ? " fast" : "") + ", " + amt + " over 3 hrs";
+      if(d <= -3) trend += "<br>Unsettled weather likely";
+      else if(d >= 3) trend += "<br>Often clearing behind a storm";
+    }
+    html.push('<section class="pc"><h3>Pressure</h3><div class="big">' + val + '</div>' + pressSpark(pv.hist) +
+              '<div class="sub">' + (trend || "No 3-hour change reported") + '</div></section>');
+  }
+  if(CONFIG.cardVis && pv && pv.visM != null){
+    const mi = pv.visM/1609.344, km = pv.visM/1000;
+    const v = metric ? (km >= 10 ? Math.round(km) : km.toFixed(1).replace(/\.0$/, "")) + ' <small>km</small>'
+                     : (mi >= 9.5 ? "10+" : mi >= 3 ? Math.round(mi) : (Math.round(mi*4)/4).toString()) + ' <small>mi</small>';
+    const frac = Math.max(0.03, Math.min(1, mi/10));
+    const tt = zonedParts(new Date(pv.t), PLACE.tz);
+    html.push('<section class="pc"><h3>Visibility</h3><div class="big">' + v + '</div>' +
+              '<div class="vbar"><i style="width:' + Math.round(frac*100) + '%"></i></div>' +
+              '<div class="sub">' + (pv.text ? esc(pv.text) + "<br>" : "") + 'Measured ' + esc(shortTime(tt.hour*60 + tt.minute)) +
+              ' at ' + esc(pv.name || pv.id) + '</div></section>');
+  }
   $("phDetails").innerHTML = html.join("");
 }
+/* the last few hours of pressure as a small line, newest at the right */
+function pressSpark(h){
+  if(!h || h.length < 3) return "";
+  const t0 = h[0].t, t1 = h[h.length - 1].t, lo = Math.min(...h.map(x => x.hpa)), hi = Math.max(...h.map(x => x.hpa));
+  const span = Math.max(hi - lo, 2), mid = (hi + lo)/2;
+  const pts = h.map(x => [((x.t - t0)/Math.max(1, t1 - t0))*96 + 2, 26 - ((x.hpa - (mid - span/2))/span)*22]);
+  const last = pts[pts.length - 1];
+  return '<svg class="spark" viewBox="0 0 100 30" preserveAspectRatio="none"><polyline points="' + pts.map(p => p[0].toFixed(1) + "," + p[1].toFixed(1)).join(" ") +
+         '" fill="none" stroke="#90c3f2" stroke-width="2" vector-effect="non-scaling-stroke"/>' +
+         '<circle cx="' + last[0].toFixed(1) + '" cy="' + last[1].toFixed(1) + '" r="2.6" fill="#fbfcfe"/></svg>';
+}
+
+/* ---- hourly graph (app build 52) -------------------------------------------
+   The next 48 hours of one thing at a time - pick it from the chips. Drag
+   across the graph to read any hour. */
+const GRAPH_KINDS = [
+  { id: "temp",  name: "Temp",       get: h => h.temp,  unit: () => "°" },
+  { id: "feels", name: "Feels like", get: h => h.feels, unit: () => "°" },
+  { id: "dew",   name: "Dew point",  get: h => dewPoint(h.temp, h.humid), unit: () => "°" },
+  { id: "wind",  name: "Wind",       get: h => h.wind,  get2: h => h.gust, unit: () => " " + spdUnit() },
+  { id: "pop",   name: "Chance",     get: h => h.pop,   unit: () => "%", min: 0, max: 100, bars: true },
+  { id: "amt",   name: "Precip",     get: h => h.amt,   unit: () => CONFIG.units === "imperial" ? " in" : " mm", min: 0, bars: true },
+  { id: "cloud", name: "Clouds",     get: h => h.cloud, unit: () => "%", min: 0, max: 100 },
+  { id: "humid", name: "Humidity",   get: h => h.humid, unit: () => "%", min: 0, max: 100 }
+];
+const G_COL = { temp: "#f2c46d", feels: "#f2905a", dew: "#7fd4a0", wind: "#e8eef8", pop: "#90c3f2",
+                amt: "#5aa8f0", cloud: "#a9b4c6", humid: "#c59af2" };
+function graphKind(){ let v = "temp"; try { v = localStorage.getItem("njord.graph") || "temp"; } catch(e){} return GRAPH_KINDS.find(k => k.id === v) || GRAPH_KINDS[0]; }
+function renderGraph(){
+  const el = $("phGraph");
+  if(!CONFIG.showGraph || !WX || !(WX.hours || []).length){ el.hidden = true; return; }
+  const hs = WX.hours, p = zonedParts(new Date(), PLACE.tz);
+  const key = p.year + "-" + pad(p.month) + "-" + pad(p.day) + "T" + pad(p.hour);
+  let i0 = hs.findIndex(h => String(h.time).slice(0, 13) === key); if(i0 < 0) i0 = 0;
+  const win = hs.slice(i0, i0 + 48), K = graphKind();
+  const avail = GRAPH_KINDS.filter(k => win.some(h => k.get(h) != null));
+  const k = avail.includes(K) ? K : avail[0];
+  if(!k){ el.hidden = true; return; }
+  el.hidden = false;
+  const vals = win.map(h => k.get(h)), v2 = k.get2 ? win.map(h => k.get2(h)) : null;
+  const all = vals.concat(v2 || []).filter(v => v != null);
+  let lo = k.min != null ? k.min : Math.min(...all), hi = k.max != null ? k.max : Math.max(...all);
+  if(k.id === "amt") hi = Math.max(hi, CONFIG.units === "imperial" ? 0.1 : 2.5);
+  if(hi - lo < 4 && k.max == null){ const m = (hi + lo)/2; lo = k.min != null ? Math.max(k.min, m - 2) : m - 2; hi = lo + 4; }
+  const pad2 = (hi - lo)*0.08; if(k.min == null) lo -= pad2; if(k.max == null) hi += pad2;
+  const W = 300, H = 120, X = i => 6 + i*(W - 12)/(win.length - 1), Y = v => 8 + (1 - (v - lo)/(hi - lo))*(H - 26);
+  let g = "";
+  /* midnights and 6-hourly ticks */
+  win.forEach((h, i) => {
+    const hr = +String(h.time).slice(11, 13);
+    if(hr === 0) g += '<line x1="' + X(i) + '" y1="4" x2="' + X(i) + '" y2="' + (H - 16) + '" stroke="rgba(255,255,255,.18)"/>' +
+                      '<text x="' + (X(i) + 3) + '" y="14" class="gD">' + esc(dayName(h.time)) + '</text>';
+    if(hr % 6 === 0 && i > 0) g += '<text x="' + X(i) + '" y="' + (H - 3) + '" class="gT">' + esc(shortTime(hr*60)) + '</text>';
+  });
+  if(k.bars){
+    const bw = (W - 12)/win.length*0.7;
+    vals.forEach((v, i) => { if(v != null && v > 0) g += '<rect x="' + (X(i) - bw/2) + '" y="' + Y(v) + '" width="' + bw + '" height="' + (Y(lo) - Y(v)) + '" rx="1.5" fill="#90c3f2" opacity=".8"/>'; });
+  } else {
+    const line = arr => { let d = "", up = false; arr.forEach((v, i) => { if(v == null){ up = false; return; } d += (up ? "L" : "M") + X(i).toFixed(1) + "," + Y(v).toFixed(1); up = true; }); return d; };
+    const d1 = line(vals);
+    if(k.id === "temp" || k.id === "feels" || k.id === "cloud" || k.id === "humid")
+      g += '<path d="' + d1 + 'L' + X(vals.length - 1) + ',' + (H - 18) + 'L' + X(0) + ',' + (H - 18) + 'Z" fill="rgba(144,195,242,.13)"/>';
+    if(v2) g += '<path d="' + line(v2) + '" fill="none" stroke="#90c3f2" stroke-width="1.5" stroke-dasharray="3 3" opacity=".7"/>';
+    g += '<path d="' + d1 + '" fill="none" stroke="#90c3f2" stroke-width="2.2" stroke-linejoin="round"/>';
+  }
+  /* high and low labels */
+  const fmt = v => k.id === "amt" ? (CONFIG.units === "imperial" ? v.toFixed(2) : v.toFixed(1)) : Math.round(v);
+  if(vals.some(v => v != null && (!k.bars || v > 0))){
+    const nn = vals.map((v, i) => [v, i]).filter(x => x[0] != null);
+    const mx = nn.reduce((a, b) => b[0] > a[0] ? b : a), mn = nn.reduce((a, b) => b[0] < a[0] ? b : a);
+    /* the low's label goes under its point unless that would sit on the time labels */
+    const marks = [[mx[0], mx[1], -6]];
+    if(!k.bars && mn[0] !== mx[0]) marks.push([mn[0], mn[1], Y(mn[0]) + 14 > H - 20 ? -6 : 14]);
+    for(const [v, i, dy] of marks){
+      const lab = fmt(v) + k.unit(), half = lab.length*3 + 2;     // keep the whole label inside the card
+      g += '<text x="' + Math.min(W - half, Math.max(half, X(i))) + '" y="' + (Y(v) + dy) + '" class="gV">' + esc(lab) + '</text>';
+    }
+  }
+  el.innerHTML = '<h3>Hourly graph <span class="tapHint">tap for full screen</span></h3>' +
+    '<div class="gChips">' + avail.map(x => '<button data-g="' + x.id + '" class="' + (x === k ? "on" : "") + '">' + x.name + '</button>').join("") + '</div>' +
+    '<div class="gWrap"><svg class="gSvg" viewBox="0 0 ' + W + ' ' + H + '">' + g + '<line class="gCur" x1="0" y1="4" x2="0" y2="' + (H - 16) + '" stroke="#fbfcfe" stroke-width="1" visibility="hidden"/></svg>' +
+    '<div class="gRead"></div></div>' +
+    (k.get2 ? '<div class="sub">Solid: wind · dashed: gusts</div>' : "");
+  el.querySelector(".gChips").onclick = e => {
+    const b = e.target.closest("[data-g]"); if(!b) return;
+    try { localStorage.setItem("njord.graph", b.dataset.g); } catch(err){}
+    renderGraph();
+  };
+  const svg = el.querySelector(".gSvg"), cur = el.querySelector(".gCur"), rd = el.querySelector(".gRead");
+  const show = ev => {
+    const r = svg.getBoundingClientRect(), x = (ev.clientX - r.left)/r.width*W;
+    const i = Math.max(0, Math.min(win.length - 1, Math.round((x - 6)/((W - 12)/(win.length - 1)))));
+    cur.setAttribute("x1", X(i)); cur.setAttribute("x2", X(i)); cur.setAttribute("visibility", "visible");
+    const h = win[i], hr = +String(h.time).slice(11, 13), v = vals[i];
+    rd.textContent = (i === 0 ? "Now" : dayName(h.time) + " " + shortTime(hr*60)) + " · " + (v == null ? "–" : fmt(v) + k.unit()) +
+                     (v2 && v2[i] != null ? ", gusts " + v2[i] + k.unit() : "");
+  };
+  void show; void cur; void rd;
+  svg.onclick = () => gfOpen();
+}
+
+/* ---- full-screen graph (app build 52) ---------------------------------------
+   Several things at once, each in its own colour, over every hour the forecast
+   has. Swipe sideways to move through the days; tap to read an hour. Night is
+   shaded, wind direction arrows run along the top, rain/snow amounts get their
+   own strip underneath. */
+const GF_PX = 15;   // width of one hour
+function gfSel(){
+  let a = null; try { a = JSON.parse(localStorage.getItem("njord.graphMulti") || "null"); } catch(e){}
+  return Array.isArray(a) && a.length ? a : ["temp", "pop", "wind"];
+}
+function gfOpen(){
+  let el = $("gfFull");
+  if(!el){
+    el = document.createElement("div"); el.id = "gfFull";
+    el.innerHTML = '<div class="gfTop"><button class="rdB" id="gfBack">‹ <span></span></button><span class="gfTitle">Hourly graph</span></div>' +
+      '<div class="gChips gfChips"></div><div class="gfRead"></div><div class="gfBody"><div class="gfAxis"></div><div class="gfScroll"></div></div>';
+    document.body.appendChild(el);
+    $("gfBack").onclick = gfClose;
+    el.querySelector(".gfChips").onclick = e => {
+      const b = e.target.closest("[data-g]"); if(!b) return;
+      let a = gfSel(); a = a.includes(b.dataset.g) ? a.filter(x => x !== b.dataset.g) : a.concat(b.dataset.g);
+      if(!a.length) return;                      // keep at least one
+      try { localStorage.setItem("njord.graphMulti", JSON.stringify(a)); } catch(err){}
+      gfDraw(true);
+    };
+  }
+  el.hidden = false;
+  $("gfBack").querySelector("span").textContent = PLACE.short || PLACE.name || "";
+  gfDraw(false);
+}
+function gfClose(){ const el = $("gfFull"); if(el) el.hidden = true; }
+const gfOpenNow = () => { const el = $("gfFull"); return !!(el && !el.hidden); };
+window.addEventListener("resize", () => { if(gfOpenNow()) gfDraw(true); });
+function gfDraw(keepScroll){
+  const el = $("gfFull"), hs = WX && WX.hours || [];
+  const p = zonedParts(new Date(), PLACE.tz);
+  const key = p.year + "-" + pad(p.month) + "-" + pad(p.day) + "T" + pad(p.hour);
+  let i0 = hs.findIndex(h => String(h.time).slice(0, 13) === key); if(i0 < 0) i0 = 0;
+  const win = hs.slice(i0);
+  const avail = GRAPH_KINDS.filter(k => win.some(h => k.get(h) != null));
+  const sel = gfSel().filter(id => avail.some(k => k.id === id));
+  el.querySelector(".gfChips").innerHTML = avail.map(k => '<button data-g="' + k.id + '" class="' + (sel.includes(k.id) ? "on" : "") +
+    '" style="--c:' + G_COL[k.id] + '"><i></i>' + k.name + (k.get2 ? " + gusts" : "") + '</button>').join("");
+  const sc = el.querySelector(".gfScroll"), prevX = sc.scrollLeft;
+  if(!win.length){ sc.innerHTML = ""; return; }
+  const lines = GRAPH_KINDS.filter(k => sel.includes(k.id) && k.id !== "amt");
+  const showAmt = sel.includes("amt");
+  const N = win.length, W = N*GF_PX + 20, bodyH = el.querySelector(".gfBody").clientHeight || 520;
+  const amtH = showAmt ? 110 : 0, H = bodyH - amtH - 4, top = 48, bot = H - 26;
+  const X = i => 10 + i*GF_PX + GF_PX/2;
+  /* one shared scale: degrees, mph and % sit together, as in a meteogram */
+  const allV = []; for(const k of lines) for(const h of win){ const v = k.get(h); if(v != null) allV.push(v); if(k.get2){ const v2 = k.get2(h); if(v2 != null) allV.push(v2); } }
+  let lo = allV.length ? Math.min(...allV) : 0, hi = allV.length ? Math.max(...allV) : 100;
+  if(lines.some(k => k.max === 100)) { lo = Math.min(lo, 0); hi = Math.max(hi, 100); }
+  const step = hi - lo > 60 ? 20 : hi - lo > 25 ? 10 : 5;
+  lo = Math.floor(lo/step)*step; hi = Math.ceil(hi/step)*step; if(hi === lo) hi = lo + step;
+  const Y = v => top + (1 - (v - lo)/(hi - lo))*(bot - top);
+  let g = "";
+  /* night shading and day labels */
+  win.forEach((h, i) => {
+    const hr = +String(h.time).slice(11, 13);
+    if(nightAt(hr*60 + 30)) g += '<rect x="' + (X(i) - GF_PX/2) + '" y="0" width="' + GF_PX + '" height="' + (H + amtH) + '" fill="rgba(0,0,0,.22)"/>';
+    if(hr === 0 && i > 0) g += '<line x1="' + (X(i) - GF_PX/2) + '" y1="0" x2="' + (X(i) - GF_PX/2) + '" y2="' + (H + amtH) + '" stroke="rgba(255,255,255,.22)"/>';
+    const firstMid = win.findIndex(x => +String(x.time).slice(11, 13) === 0);
+    if((hr === 0 && i > 0) || (i === 0 && (firstMid < 0 || firstMid > 4))) g += '<text x="' + (X(i) - GF_PX/2 + 5) + '" y="' + (top + 4) + '" class="gfDay">' + esc(i === 0 ? "Today" : dayName(h.time)) + '</text>';
+    if(hr % 3 === 0) g += '<text x="' + X(i) + '" y="' + (H - 6 - (hr === 0 ? 0 : 0)) + '" class="gfT"' + (hr === 0 ? ' visibility="hidden"' : '') + '>' + esc(shortTime(hr*60)) + '</text>';
+  });
+  /* grid */
+  for(let v = lo; v <= hi; v += step) g += '<line x1="0" y1="' + Y(v) + '" x2="' + W + '" y2="' + Y(v) + '" stroke="rgba(160,190,235,.10)"/>';
+  /* wind arrows along the top, every 2 hours (they point where the wind blows to) */
+  win.forEach((h, i) => {
+    if(i % 2 || h.dir == null) return;
+    g += '<g transform="translate(' + X(i) + ',16) rotate(' + ((h.dir + 180) % 360) + ')"><path d="M0,-7 L4,2 L0,0 L-4,2Z" fill="#7fd4a0"/></g>';
+  });
+  /* lines, with a value label every 6 hours */
+  const path = vals => { let d = "", up = false; vals.forEach((v, i) => { if(v == null){ up = false; return; } d += (up ? "L" : "M") + X(i).toFixed(1) + "," + Y(v).toFixed(1); up = true; }); return d; };
+  for(const k of lines){
+    const c = G_COL[k.id], vals = win.map(h => k.get(h));
+    if(k.get2) g += '<path d="' + path(win.map(h => k.get2(h))) + '" fill="none" stroke="' + c + '" stroke-width="1.5" stroke-dasharray="3 3" opacity=".65"/>';
+    g += '<path d="' + path(vals) + '" fill="none" stroke="' + c + '" stroke-width="2.2" stroke-linejoin="round"/>';
+    vals.forEach((v, i) => {
+      if(v == null || i % 6 !== 3) return;
+      g += '<text x="' + X(i) + '" y="' + (Y(v) - 6) + '" class="gfV" fill="' + c + '">' + Math.round(v) + '</text>';
+    });
+  }
+  /* rain/snow amounts strip */
+  if(showAmt){
+    const am = win.map(h => h.amt), mx = Math.max(CONFIG.units === "imperial" ? 0.05 : 1, ...am.filter(v => v != null));
+    const y0 = H + amtH - 22, y1 = H + 14;
+    g += '<line x1="0" y1="' + y0 + '" x2="' + W + '" y2="' + y0 + '" stroke="rgba(160,190,235,.18)"/>' +
+         '<text x="6" y="' + (H + 10) + '" class="gfDay" fill="' + G_COL.amt + '">Precip (' + (CONFIG.units === "imperial" ? "in" : "mm") + ')</text>';
+    am.forEach((v, i) => { if(v > 0) g += '<rect x="' + (X(i) - GF_PX*0.35) + '" y="' + (y0 - (v/mx)*(y0 - y1)) + '" width="' + GF_PX*0.7 + '" height="' + (v/mx)*(y0 - y1) + '" rx="1.5" fill="' + G_COL.amt + '"/>'; });
+  }
+  g += '<line class="gfCur" x1="0" y1="0" x2="0" y2="' + (H + amtH) + '" stroke="#fbfcfe" visibility="hidden"/>';
+  sc.innerHTML = '<svg width="' + W + '" height="' + (H + amtH) + '">' + g + '</svg>';
+  /* the scale stays put at the left while the hours scroll */
+  let ax = '<svg width="34" height="' + (H + amtH) + '">';
+  for(let v = lo; v <= hi; v += step) ax += '<text x="30" y="' + (Y(v) + 4) + '" class="gfA">' + v + '</text>';
+  el.querySelector(".gfAxis").innerHTML = ax + '</svg>';
+  sc.scrollLeft = keepScroll ? prevX : 0;
+  const cur = sc.querySelector(".gfCur"), rd = el.querySelector(".gfRead");
+  sc.querySelector("svg").onclick = e => {
+    const r = e.currentTarget.getBoundingClientRect(), i = Math.max(0, Math.min(N - 1, Math.floor((e.clientX - r.left - 10)/GF_PX)));
+    cur.setAttribute("x1", X(i)); cur.setAttribute("x2", X(i)); cur.setAttribute("visibility", "visible");
+    const h = win[i], hr = +String(h.time).slice(11, 13);
+    const parts = GRAPH_KINDS.filter(k => sel.includes(k.id)).map(k => {
+      const v = k.get(h); if(v == null) return "";
+      const f = k.id === "amt" ? (CONFIG.units === "imperial" ? v.toFixed(2) : v.toFixed(1)) : Math.round(v);
+      return '<span style="color:' + G_COL[k.id] + '">' + esc(k.name) + " " + f + esc(k.unit()) +
+             (k.get2 && k.get2(h) != null ? " (gusts " + k.get2(h) + ")" : "") + '</span>';
+    }).filter(Boolean);
+    rd.innerHTML = '<b>' + esc((i === 0 ? "Now" : dayName(h.time) + " " + shortTime(hr*60))) + '</b> ' + parts.join(" · ");
+  };
+  rd.innerHTML = '<span class="sub">Tap the graph to read an hour · swipe for more days</span>';
+}
+function dayName(t){
+  const d = new Date(String(t).slice(0, 10) + "T12:00:00Z");
+  return ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][d.getUTCDay()];
+}
+window.phRedraw = () => { try { render(true); } catch(e){} };
+window.njGraphOpen = () => gfOpen();
 function moonImg(){
   try {
     const ph2 = SCENE.phase, R = 44;
@@ -1070,6 +1320,7 @@ top.addEventListener("click", e => {
 
 /* Android back button: close what is open, then scroll the sheet home */
 window.njordBack = function(){
+  if(gfOpenNow()){ gfClose(); return true; }
   if(rdOpenNow()){ if(!$("rdLay").hidden) $("rdLay").hidden = true; else if(!$("rdSet").hidden) $("rdSet").hidden = true; else rdClose(); return true; }
   if(upsellOpen()){ closeUpsell(); return true; }
   if(!alertSheet.hidden){ closeAlerts(); return true; }
