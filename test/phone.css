@@ -505,3 +505,19 @@ html:not(.phone) #phPlacesH, html:not(.phone) #phPlaces { display: none; }
   font: 600 11px/1 Figtree, system-ui, sans-serif; letter-spacing: .14em; text-transform: uppercase; color: rgba(170,190,220,.75); }
 .gfDHead button { background: none; border: 0; color: #e8eef8; font-size: 18px; padding: 4px 6px; }
 #gfFull .gfChips button { justify-content: flex-start; padding: 10px 12px; font-size: 14.5px; border-radius: 12px; }
+
+/* build 52: tighter top, pull tab for the data drawer */
+#gfFull { padding-top: calc(6px + env(safe-area-inset-top)); }
+.gfTop { padding: 0 10px 4px; gap: 8px; }
+#gfFull .gfTop .rdB { font-size: 14px; padding: 7px 11px; white-space: nowrap; max-width: 62vw; overflow: hidden; text-overflow: ellipsis; }
+.gfTitle { white-space: nowrap; }
+.gfRead { min-height: 34px; font-size: 12.5px; padding: 0 12px 4px; }
+.gfPull { position: absolute; left: 0; top: 50%; transform: translateY(-50%); z-index: 2; width: 18px; height: 72px; padding: 0;
+  border: 1px solid rgba(160,190,235,.25); border-left: 0; border-radius: 0 12px 12px 0; background: rgba(30,44,70,.92);
+  box-shadow: 2px 0 10px rgba(0,0,0,.35); }
+.gfPull i { position: absolute; left: 6px; top: 22px; bottom: 22px; width: 4px; border-left: 2px solid rgba(220,232,250,.55); border-right: 2px solid rgba(220,232,250,.55); }
+.gfBody { padding-left: 16px; }
+.gfRead { white-space: nowrap; overflow-x: auto; scrollbar-width: none; }
+.gfRead::-webkit-scrollbar { display: none; }
+.gfRead { min-height: 22px; }
+.gfPull i { left: 4px; width: 6px; box-sizing: border-box; }

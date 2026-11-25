@@ -1061,15 +1061,24 @@ function gfOpen(){
   if(!el){
     el = document.createElement("div"); el.id = "gfFull";
     /* build 52: the data list slides out from the left, so the graph gets the whole screen */
-    el.innerHTML = '<div class="gfTop"><button class="rdB" id="gfBack">‹ <span></span></button><button class="rdB" id="gfData">☰ Data</button>' +
-      '<span class="gfTitle">Hourly graph</span></div>' +
+    el.innerHTML = '<div class="gfTop"><button class="rdB" id="gfBack">‹ <span></span></button><span class="gfTitle">Hourly graph</span></div>' +
+      '<button class="gfPull" id="gfData" aria-label="Choose data"><i></i></button>' +
       '<div class="gfRead"></div><div class="gfBody"><div class="gfAxis"></div><div class="gfScroll"></div></div>' +
       '<div class="gfShade" hidden></div><div class="gfDrawer"><div class="gfDHead">Data<button id="gfDClose" aria-label="Close">✕</button></div><div class="gfChips"></div></div>';
     document.body.appendChild(el);
     $("gfBack").onclick = gfClose;
     const drawer = el.querySelector(".gfDrawer"), shade = el.querySelector(".gfShade");
     const dOpen = on => { drawer.classList.toggle("open", on); shade.hidden = !on; };
-    $("gfData").onclick = () => dOpen(true);
+    /* the pull tab on the left edge: tap it, or drag it to the right */
+    const pull = $("gfData"); let px0 = null;
+    pull.onclick = () => dOpen(true);
+    pull.addEventListener("touchstart", e => { px0 = e.touches[0].clientX; }, { passive: true });
+    pull.addEventListener("touchmove", e => { if(px0 != null && e.touches[0].clientX - px0 > 24){ px0 = null; dOpen(true); } }, { passive: true });
+    pull.addEventListener("touchend", () => { px0 = null; });
+    /* and drag the open drawer back to the left to close it */
+    let dx0 = null;
+    drawer.addEventListener("touchstart", e => { dx0 = e.touches[0].clientX; }, { passive: true });
+    drawer.addEventListener("touchmove", e => { if(dx0 != null && dx0 - e.touches[0].clientX > 40){ dx0 = null; dOpen(false); } }, { passive: true });
     $("gfDClose").onclick = shade.onclick = () => dOpen(false);
     el.gfDrawer = dOpen;
     el.querySelector(".gfChips").onclick = e => {
@@ -1246,7 +1255,7 @@ function gfDraw(keepScroll, toNow){
     const when = i === P0 ? "Now" : (h.past ? "Measured " : "") + dayName(h.time) + " " + shortTime(hr*60);
     rd.innerHTML = '<b>' + esc(when) + '</b> ' + (parts.join(" · ") || '<span class="sub">no report</span>');
   };
-  rd.innerHTML = legend + '<br><span class="sub">Tap to read an hour · swipe for more · pinch to zoom</span>';
+  rd.innerHTML = legend;
 }
 function dayName(t){
   const d = new Date(String(t).slice(0, 10) + "T12:00:00Z");
