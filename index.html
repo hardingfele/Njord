@@ -299,6 +299,12 @@
       <button data-show="showLandmarks">Landmarks</button>
       <button data-show="rainOnGlass">Rain on glass</button>
     </div>
+    <h4>Cards</h4>
+    <div class="chips">
+      <button data-show="showGraph">Hourly graph</button>
+      <button data-show="cardPress">Pressure</button>
+      <button data-show="cardVis">Visibility</button>
+    </div>
     <h4>About</h4>
     <div id="credits">
       <div id="appVer" class="cr-by" hidden></div>
@@ -653,7 +659,8 @@ const CONFIG = {
   flagFade   : 0.45,         // daytime fade so the flag sits in the scene (0 = full colour)
   debugTime  : true,
   testMode   : false,        // test rig + debug keys; toggled from the settings gear
-  showLandmarks: true,       // famous structures near the place (Eiffel Tower, Opera House ...)
+  showLandmarks: true,
+  showGraph: true, cardPress: true, cardVis: true,   // build 52: phone cards       // famous structures near the place (Eiffel Tower, Opera House ...)
   showAurora : true,         // aurora curtains, note under the moon, storm (!) on day list
   rainOnGlass: true,         // drops landing and running down the "window" in rain
   maxFPS     : 30,           // ceiling; the loop idles far below this
@@ -685,7 +692,8 @@ const STORE = {
 };
 /* Settings chosen in the gear panel persist across sessions. */
 const SETTING_KEYS = ["units","windMS","clock24","showHourly","showCards","showMoon","showSunArc",
-                      "showTurbines","showFlag","flagDesign","flagLight","testMode","showAurora","showLandmarks","rainOnGlass"];
+                      "showTurbines","showFlag","flagDesign","flagLight","testMode","showAurora","showLandmarks","rainOnGlass",
+                      "showGraph","cardPress","cardVis"];
 (function restoreSettings(){
   try {
     const j = JSON.parse(STORE.get("weather.settings") || "null");
@@ -1089,7 +1097,7 @@ function omForecast(P){
     + "weather_code,cloud_cover,wind_speed_10m,wind_direction_10m,wind_gusts_10m,precipitation"
     + "&hourly=temperature_2m,precipitation_probability,weather_code,"
     + "wind_speed_10m,wind_direction_10m,wind_gusts_10m,"
-    + "precipitation,rain,showers,snowfall"
+    + "precipitation,rain,showers,snowfall,apparent_temperature,cloud_cover,relative_humidity_2m"
     + "&daily=weather_code,temperature_2m_max,temperature_2m_min,"
     + "precipitation_probability_max,precipitation_sum,wind_speed_10m_max,"
     + "wind_gusts_10m_max,wind_direction_10m_dominant"
@@ -1133,7 +1141,10 @@ function omForecast(P){
            rain + showers, snow is depth (in, or cm when metric) */
         amt : h.precipitation ? h.precipitation[i] : null,
         rain: h.rain ? (h.rain[i] || 0) + (h.showers ? h.showers[i] || 0 : 0) : null,
-        snow: h.snowfall ? h.snowfall[i] : null
+        snow: h.snowfall ? h.snowfall[i] : null,
+        feels: h.apparent_temperature && h.apparent_temperature[i] != null ? Math.round(h.apparent_temperature[i]) : null,
+        cloud: h.cloud_cover ? h.cloud_cover[i] : null,
+        humid: h.relative_humidity_2m ? h.relative_humidity_2m[i] : null
       })),
       at: Date.now()
     };
@@ -1434,7 +1445,10 @@ function nwsHourlyToWX(j, g){
                                 amt: hasGrid ? L(o.qpf || 0) : null,
                                 /* rain is what's left of the liquid once the snow (about 10:1) is taken out */
                                 rain: hasGrid ? L(Math.max(0, (o.qpf || 0) - (o.snw || 0)/10)) : null,
-                                snow: hasGrid ? S(o.snw || 0) : null }));
+                                snow: hasGrid ? S(o.snw || 0) : null,
+                                /* build 52: for the hourly graph */
+                                feels: o.feelsF != null ? Math.round(T(o.feelsF)) : null,
+                                cloud: o.sky, humid: o.rh != null ? Math.round(o.rh) : null }));
   const byDay = new Map();
   hours.forEach((o, i) => {
     const d = o.time.slice(0, 10);
@@ -1776,8 +1790,30 @@ function obsFromFeature(f, P){
            layers: layers.map(l => l.amount + (l.base && l.base.value != null
              ? Math.round(l.base.value*3.281/100) : "")).join(" ") };
 }
+/* build 52: pressure (with its 3-hour change) and visibility from the
+   nearest station's reports, for the Pressure and Visibility cards */
+let OBS_PV = null;
+function obsPV(feats){
+  const now = Date.now(), val = x => x && x.value != null ? x.value : null;
+  const rows = feats.map(f => {
+    const q = f.properties || {};
+    return { t: Date.parse(q.timestamp), pa: val(q.seaLevelPressure) != null ? val(q.seaLevelPressure) : val(q.barometricPressure),
+             vis: val(q.visibility), text: q.textDescription || "" };
+  }).filter(r => isFinite(r.t));
+  const r0 = rows.find(r => now - r.t < 2*3600e3 && (r.pa != null || r.vis != null));
+  if(!r0) return null;
+  let trend = null;
+  if(r0.pa != null){
+    const r3 = rows.filter(r => r.pa != null && Math.abs(r.t - (r0.t - 3*3600e3)) < 50*60000)
+                   .sort((a, b) => Math.abs(a.t - (r0.t - 3*3600e3)) - Math.abs(b.t - (r0.t - 3*3600e3)))[0];
+    if(r3) trend = (r0.pa - r3.pa)/100;
+  }
+  const hist = rows.filter(r => r.pa != null && r0.t - r.t <= 6*3600e3).map(r => ({ t: r.t, hpa: r.pa/100 })).reverse();
+  return { t: r0.t, hpa: r0.pa != null ? r0.pa/100 : null, visM: r0.vis, text: r0.text, trend, hist };
+}
 function loadObs(){
   const P = PLACE, stamp = P.lat + "," + P.lng, key = "weather.stations.v2:" + placeKey();
+  OBS_PV = null;
   if(P.cc && P.cc !== "US"){ OBS = null; OBS_STATE = "not used outside US"; return; }
   const stations = () => {
     const c = STORE.get(key);
@@ -1789,6 +1825,7 @@ function loadObs(){
       .then(j => {
         const list = (j.features || []).map(f => {
           const g = f.geometry && f.geometry.coordinates;
+          try { STORE.set("weather.stn." + f.properties.stationIdentifier, f.properties.name || ""); } catch(e){}
           return { id: f.properties.stationIdentifier,
                    km: g ? kmBetween(P.lat, P.lng, g[1], g[0]) : 999 };
         }).filter(x => x.km <= OBS_MAX_KM).sort((a, b) => a.km - b.km).slice(0, 4).map(x => x.id);
@@ -1797,14 +1834,18 @@ function loadObs(){
         return list;
       });
   };
-  OBS_STATE = "loading";
+  OBS_STATE = "loading"; OBS_PV = null;
   stations().then(ids => {
     const tries = [];
     const next = i => {
       if(i >= ids.length) return Promise.reject("no usable report (" + tries.join(", ") + ")");
-      return cachedJSON("https://api.weather.gov/stations/" + ids[i] + "/observations?limit=8", 9*60000,
+      return cachedJSON("https://api.weather.gov/stations/" + ids[i] + "/observations?limit=12", 9*60000,
           x => fetch(x, OBS_HDR).then(r => r.ok ? r.json() : Promise.reject(r.status)))
         .then(j => {
+          if(!OBS_PV && PLACE.lat + "," + PLACE.lng === stamp){
+            const pv = obsPV(j.features || []);
+            if(pv){ pv.id = ids[i]; pv.name = STORE.get("weather.stn." + ids[i]) || ids[i]; OBS_PV = pv; }
+          }
           for(const f of (j.features || [])){       // newest first
             const o = obsFromFeature(f, P);
             if(o){ o.id = ids[i]; return o; }
@@ -8188,6 +8229,7 @@ setEl.querySelectorAll("[data-show]").forEach(b => b.addEventListener("click", (
   CONFIG[b.dataset.show] = !CONFIG[b.dataset.show];
   if(b.dataset.show === "showLandmarks") seedLand();
   lastDraw = 0; syncRig();
+  if(typeof phRedraw === "function") phRedraw();
 }));
 document.getElementById("sHomeSet").addEventListener("click", () => {
   CONFIG.home = Object.assign({}, PLACE);
