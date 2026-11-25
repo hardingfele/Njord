@@ -1206,7 +1206,7 @@ function gfDraw(keepScroll, toNow){
     }
     if(pn.id === "wind") win.forEach((h, i) => {
       if(i % Math.max(1, Math.round(26/GF_PX)) || h.dir == null) return;
-      g += '<g transform="translate(' + X(i) + ',' + (top + 7) + ') rotate(' + ((h.dir + 180) % 360) + ')"><path d="M0,-6 L3.5,2 L0,0 L-3.5,2Z" fill="#7fd4a0"' + (h.past ? ' opacity=".5"' : '') + '/></g>';
+      g += windGlyph(X(i), top + 8, h.dir, h.past ? .5 : 1);
     });
     if(pn.id === "wet"){
       /* rain blue, snow white (snow as snow depth), stacked; the past is lighter */
@@ -1257,6 +1257,17 @@ function gfDraw(keepScroll, toNow){
     rd.innerHTML = '<b>' + esc(when) + '</b> ' + (parts.join(" · ") || '<span class="sub">no report</span>');
   };
   rd.innerHTML = legend;
+}
+/* wind arrows on the graph. Normal: a weathervane arrow (tail + open head)
+   pointing where the wind is going, like TV weather and the Wind card.
+   Pilot mode (planned, with Aviation): the solid wedge, pointing to where the
+   wind comes FROM - a different shape so the two can't be mixed up. */
+function windGlyph(x, y, dir, op){
+  const pilot = CONFIG.windFrom === true;
+  if(pilot) return '<g transform="translate(' + x + ',' + y + ') rotate(' + (dir % 360) + ')" opacity="' + op + '">' +
+                   '<path d="M0,-7 L4.2,2.4 L0,0 L-4.2,2.4Z" fill="#7fd4a0"/></g>';
+  return '<g transform="translate(' + x + ',' + y + ') rotate(' + ((dir + 180) % 360) + ')" opacity="' + op + '" fill="none" stroke="#7fd4a0" ' +
+         'stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M0,7 L0,-6.5"/><path d="M-3.6,-2.6 L0,-6.8 L3.6,-2.6"/></g>';
 }
 function dayName(t){
   const d = new Date(String(t).slice(0, 10) + "T12:00:00Z");
