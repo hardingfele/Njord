@@ -1107,21 +1107,37 @@ function gfOpen(){
     };
     $("gfIn").onclick = () => zoom(1.4);
     $("gfOut").onclick = () => zoom(1/1.4);
-    /* pinch stretches the time axis only - the page itself never zooms here */
+    /* pinch stretches the time axis only - the page itself never zooms here.
+       During the pinch the drawn graph is just stretched sideways (cheap and
+       smooth); when the fingers lift it is redrawn once at the new hour width. */
     let pin = null;
     const body = el.querySelector(".gfBody");      // fingers may land on the scale too
-    {
-    body.addEventListener("touchstart", e => { if(e.touches.length === 2){
-      const d = Math.abs(e.touches[0].clientX - e.touches[1].clientX), mid = (e.touches[0].clientX + e.touches[1].clientX)/2 - sc.getBoundingClientRect().left;
-      pin = { d: Math.max(d, 20), px: GF_PX, hour: (sc.scrollLeft + mid - 10)/GF_PX, mid }; } }, { passive: true });
-    body.addEventListener("touchmove", e => { if(pin && e.touches.length === 2){
+    const span = t => Math.max(40, Math.abs(t[0].clientX - t[1].clientX));
+    body.addEventListener("touchstart", e => {
+      if(e.touches.length !== 2) return;
+      const svg = sc.querySelector("svg"); if(!svg) return;
+      const mid = (e.touches[0].clientX + e.touches[1].clientX)/2 - sc.getBoundingClientRect().left;
+      pin = { d: span(e.touches), px: GF_PX, k: 1, mid, at: sc.scrollLeft + mid, svg };
+      svg.style.transformOrigin = pin.at + "px 0"; svg.style.willChange = "transform";
+    }, { passive: true });
+    body.addEventListener("touchmove", e => {
+      if(!pin || e.touches.length !== 2) return;
       e.preventDefault();
-      const d = Math.abs(e.touches[0].clientX - e.touches[1].clientX);
-      const px = Math.max(5, Math.min(36, pin.px*d/pin.d));
-      if(Math.abs(px - GF_PX) > 0.4){ GF_PX = px; gfDraw(false); sc.scrollLeft = pin.hour*GF_PX + 10 - pin.mid; }
-    } }, { passive: false });
-    body.addEventListener("touchend", e => { if(e.touches.length < 2){ if(pin){ try { localStorage.setItem("njord.graphPx", String(GF_PX)); } catch(err){} } pin = null; } });
-    }
+      pin.k = Math.max(5/pin.px, Math.min(36/pin.px, span(e.touches)/pin.d));
+      pin.svg.style.transform = "scaleX(" + pin.k.toFixed(3) + ")";
+    }, { passive: false });
+    const endPinch = () => {
+      if(!pin) return;
+      const p = pin; pin = null;
+      p.svg.style.transform = ""; p.svg.style.willChange = "";
+      if(Math.abs(p.k - 1) < 0.03) return;
+      const hour = (p.at - 10)/p.px;
+      GF_PX = p.px*p.k; gfDraw(false);
+      sc.scrollLeft = hour*GF_PX + 10 - p.mid;
+      try { localStorage.setItem("njord.graphPx", String(GF_PX)); } catch(err){}
+    };
+    body.addEventListener("touchend", e => { if(e.touches.length < 2) endPinch(); });
+    body.addEventListener("touchcancel", endPinch);
     try { const px = +localStorage.getItem("njord.graphPx"); if(px >= 5 && px <= 36) GF_PX = px; } catch(e){}
   }
   el.hidden = false;
