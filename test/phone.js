@@ -1071,9 +1071,9 @@ function gfOpen(){
     el = document.createElement("div"); el.id = "gfFull";
     /* build 52: the data list slides out from the left, so the graph gets the whole screen */
     el.innerHTML = '<div class="gfTop"><button class="rdB" id="gfBack">‹ <span></span></button><span class="gfTitle">Hourly graph</span>' +
-      '<span style="flex:1"></span><button class="rdB gfZ" id="gfOut" aria-label="Zoom out">−</button><button class="rdB gfZ" id="gfIn" aria-label="Zoom in">+</button></div>' +
+      '</div>' +
       '<button class="gfPull" id="gfData" aria-label="Choose data"><i></i></button>' +
-      '<div class="gfReadWrap"><div class="gfRead"></div><span class="gfMoreArrow">▾ more</span></div><div class="gfBody"><div class="gfAxis"></div><div class="gfScroll"></div></div>' +
+      '<div class="gfReadWrap"><div class="gfRead"></div><button class="gfMoreArrow" type="button">▾ more</button></div><div class="gfBody"><div class="gfAxis"></div><div class="gfScroll"></div></div>' +
       '<div class="gfShade" hidden></div><div class="gfDrawer"><div class="gfDHead">Data<button id="gfDClose" aria-label="Close">✕</button></div><div class="gfChips"></div></div>';
     document.body.appendChild(el);
     $("gfBack").onclick = gfClose;
@@ -1106,8 +1106,7 @@ function gfOpen(){
       sc.scrollLeft = hour*GF_PX + 10 - mid;
       try { localStorage.setItem("njord.graphPx", String(GF_PX)); } catch(err){}
     };
-    $("gfIn").onclick = () => zoom(1.4);
-    $("gfOut").onclick = () => zoom(1/1.4);
+    void zoom;                                    // build 53: buttons removed; pinch only
     /* pinch stretches the time axis only - the page itself never zooms here.
        During the pinch the drawn graph is just stretched sideways (cheap and
        smooth); when the fingers lift it is redrawn once at the new hour width. */
@@ -1150,9 +1149,19 @@ function gfOpen(){
    a fade and a small arrow show it scrolls */
 function gfMore(){
   const rd = $("gfFull") && $("gfFull").querySelector(".gfRead"); if(!rd) return;
-  const upd = () => { const m = rd.scrollHeight - rd.scrollTop - rd.clientHeight > 2;
-                      rd.classList.toggle("more", m); rd.parentNode.classList.toggle("more", m); };
+  const wrap = rd.parentNode, btn = wrap.querySelector(".gfMoreArrow");
+  const upd = () => {
+    const over = rd.scrollHeight - rd.clientHeight > 2, end = rd.scrollHeight - rd.scrollTop - rd.clientHeight <= 4;
+    rd.classList.toggle("more", over && !end); wrap.classList.toggle("more", over);
+    if(btn) btn.textContent = end ? "▴ back" : "▾ more";
+  };
   rd.onscroll = upd; requestAnimationFrame(upd);
+  /* "more" scrolls down a step; at the end it reads "back" and returns to the top */
+  if(btn) btn.onclick = () => {
+    const end = rd.scrollHeight - rd.scrollTop - rd.clientHeight <= 4;
+    const left = rd.scrollHeight - rd.clientHeight - rd.scrollTop;
+    rd.scrollTo({ top: end ? 0 : rd.scrollTop + (left < rd.clientHeight*1.4 ? left : rd.clientHeight), behavior: "smooth" });
+  };
 }
 function gfClose(){ const el = $("gfFull"); if(el){ el.hidden = true; if(el.gfDrawer) el.gfDrawer(false); } }
 const gfOpenNow = () => { const el = $("gfFull"); return !!(el && !el.hidden); };
