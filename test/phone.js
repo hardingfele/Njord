@@ -944,7 +944,8 @@ function renderGraph(){
   const hs = WX.hours, p = zonedParts(new Date(), PLACE.tz);
   const key = p.year + "-" + pad(p.month) + "-" + pad(p.day) + "T" + pad(p.hour);
   let i0 = hs.findIndex(h => String(h.time).slice(0, 13) === key); if(i0 < 0) i0 = 0;
-  const win = hs.slice(i0, i0 + 48), K = graphKind();
+  /* build 52: every forecast hour, 48 of them across the card; swipe sideways for the rest */
+  const win = hs.slice(i0, i0 + 240), K = graphKind();
   const avail = GRAPH_KINDS.filter(k => win.some(h => k.get(h) != null));
   const k = avail.includes(K) ? K : avail[0];
   if(!k){ el.hidden = true; return; }
@@ -955,7 +956,7 @@ function renderGraph(){
   if(k.id === "amt") hi = Math.max(hi, CONFIG.units === "imperial" ? 0.1 : 2.5);
   if(hi - lo < 4 && k.max == null){ const m = (hi + lo)/2; lo = k.min != null ? Math.max(k.min, m - 2) : m - 2; hi = lo + 4; }
   const pad2 = (hi - lo)*0.08; if(k.min == null) lo -= pad2; if(k.max == null) hi += pad2;
-  const W = 300, H = 120, X = i => 6 + i*(W - 12)/(win.length - 1), Y = v => 8 + (1 - (v - lo)/(hi - lo))*(H - 26);
+  const PER = 288/47, W = Math.max(300, 12 + (win.length - 1)*PER), H = 120, X = i => 6 + i*PER, Y = v => 8 + (1 - (v - lo)/(hi - lo))*(H - 26);
   let g = "";
   /* midnights and 6-hourly ticks */
   win.forEach((h, i) => {
@@ -990,7 +991,7 @@ function renderGraph(){
   }
   el.innerHTML = '<h3>Hourly graph <span class="tapHint">tap for full screen</span></h3>' +
     '<div class="gChips">' + avail.map(x => '<button data-g="' + x.id + '" class="' + (x === k ? "on" : "") + '">' + x.name + '</button>').join("") + '</div>' +
-    '<div class="gWrap"><svg class="gSvg" viewBox="0 0 ' + W + ' ' + H + '">' + g + '<line class="gCur" x1="0" y1="4" x2="0" y2="' + (H - 16) + '" stroke="#fbfcfe" stroke-width="1" visibility="hidden"/></svg>' +
+    '<div class="gWrap"><svg class="gSvg" style="width:' + (W/300*100).toFixed(2) + '%" viewBox="0 0 ' + W + ' ' + H + '">' + g + '<line class="gCur" x1="0" y1="4" x2="0" y2="' + (H - 16) + '" stroke="#fbfcfe" stroke-width="1" visibility="hidden"/></svg>' +
     '<div class="gRead"></div></div>' +
     (k.get2 ? '<div class="sub">Solid: wind · dashed: gusts</div>' : "");
   el.querySelector(".gChips").onclick = e => {

@@ -456,8 +456,9 @@ html:not(.phone) #phPlacesH, html:not(.phone) #phPlaces { display: none; }
 #phGraph .gChips button { flex: 0 0 auto; padding: 6px 11px; border-radius: 14px; border: 1px solid rgba(160,190,235,.18);
   background: rgba(255,255,255,.05); color: rgba(226,234,246,.88); font: 500 13px/1 Figtree, system-ui, sans-serif; }
 #phGraph .gChips button.on { background: rgba(120,224,242,.2); border-color: rgba(120,224,242,.65); color: #fff; }
-#phGraph .gWrap { position: relative; }
-#phGraph .gSvg { width: 100%; height: auto; display: block; touch-action: pan-y; }
+#phGraph .gWrap { position: relative; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; margin: 0 -4px; }
+#phGraph .gWrap::-webkit-scrollbar { display: none; }
+#phGraph .gSvg { max-width: none; height: auto; display: block; touch-action: pan-x pan-y; }
 #phGraph .gT { font: 400 9px Figtree, system-ui, sans-serif; fill: rgba(200,214,236,.65); text-anchor: middle; }
 #phGraph .gD { font: 600 9px Figtree, system-ui, sans-serif; fill: rgba(200,214,236,.75); }
 #phGraph .gV { font: 600 10px Figtree, system-ui, sans-serif; fill: #fff; text-anchor: middle; }
