@@ -1107,20 +1107,21 @@ function gfOpen(){
     };
     $("gfIn").onclick = () => zoom(1.4);
     $("gfOut").onclick = () => zoom(1/1.4);
-    /* pinch to zoom in the Android app only (the web app uses + / −) */
+    /* pinch stretches the time axis only - the page itself never zooms here */
     let pin = null;
-    if(window.NjordAndroid){
-    sc.addEventListener("touchstart", e => { if(e.touches.length === 2){
+    const body = el.querySelector(".gfBody");      // fingers may land on the scale too
+    {
+    body.addEventListener("touchstart", e => { if(e.touches.length === 2){
       const d = Math.abs(e.touches[0].clientX - e.touches[1].clientX), mid = (e.touches[0].clientX + e.touches[1].clientX)/2 - sc.getBoundingClientRect().left;
       pin = { d: Math.max(d, 20), px: GF_PX, hour: (sc.scrollLeft + mid - 10)/GF_PX, mid }; } }, { passive: true });
-    sc.addEventListener("touchmove", e => { if(pin && e.touches.length === 2){
+    body.addEventListener("touchmove", e => { if(pin && e.touches.length === 2){
       e.preventDefault();
       const d = Math.abs(e.touches[0].clientX - e.touches[1].clientX);
       const px = Math.max(5, Math.min(36, pin.px*d/pin.d));
       if(Math.abs(px - GF_PX) > 0.4){ GF_PX = px; gfDraw(false); sc.scrollLeft = pin.hour*GF_PX + 10 - pin.mid; }
     } }, { passive: false });
-    sc.addEventListener("touchend", e => { if(e.touches.length < 2){ if(pin){ try { localStorage.setItem("njord.graphPx", String(GF_PX)); } catch(err){} } pin = null; } });
-    } else sc.style.touchAction = "pan-x";
+    body.addEventListener("touchend", e => { if(e.touches.length < 2){ if(pin){ try { localStorage.setItem("njord.graphPx", String(GF_PX)); } catch(err){} } pin = null; } });
+    }
     try { const px = +localStorage.getItem("njord.graphPx"); if(px >= 5 && px <= 36) GF_PX = px; } catch(e){}
   }
   el.hidden = false;
