@@ -929,12 +929,19 @@ const GRAPH_KINDS = [
   { id: "temp",  name: "Temp",       get: h => h.temp,  unit: () => "°" },
   { id: "feels", name: "Feels like", get: h => h.feels, unit: () => "°" },
   { id: "dew",   name: "Dew point",  get: h => dewPoint(h.temp, h.humid), unit: () => "°" },
-  { id: "wind",  name: "Wind",       get: h => h.wind,  get2: h => h.gust, unit: () => " " + spdUnit() },
+  { id: "wind",  name: "Wind",       get: h => h.wind,  get2: h => gustOf(h), unit: () => " " + spdUnit() },
   { id: "pop",   name: "Rain/snow %",     get: h => h.pop,   unit: () => "%", min: 0, max: 100, bars: true },
   { id: "amt",   name: "Rain/snow amount",     get: h => h.amt,   unit: () => CONFIG.units === "imperial" ? " in" : " mm", min: 0, bars: true },
   { id: "cloud", name: "Clouds",     get: h => h.cloud, unit: () => "%", min: 0, max: 100 },
   { id: "humid", name: "Humidity",   get: h => h.humid, unit: () => "%", min: 0, max: 100 }
 ];
+/* build 52: gusts only when they matter - 15 mph or more (24 km/h, 7 m/s) and
+   above the steady wind; NOAA's grid often carries a "gust" equal to the wind */
+function gustOf(h){
+  const g = h.gust; if(g == null || h.wind == null) return null;
+  const min = CONFIG.units === "imperial" ? 15 : windMS() ? 7 : 24;
+  return g >= min && g > h.wind ? g : null;
+}
 const G_COL = { temp: "#f2c46d", feels: "#f2905a", dew: "#7fd4a0", wind: "#e8eef8", pop: "#90c3f2",
                 amt: "#5aa8f0", cloud: "#a9b4c6", humid: "#c59af2" };
 function graphKind(){ let v = "temp"; try { v = localStorage.getItem("njord.graph") || "temp"; } catch(e){} return GRAPH_KINDS.find(k => k.id === v) || GRAPH_KINDS[0]; }
@@ -1175,7 +1182,7 @@ function gfDraw(keepScroll, toNow){
     d += (up ? "L" : "M") + X(i).toFixed(1) + "," + v.toFixed(1); up = true; }); return d; };
   const labEvery = GF_PX >= 14 ? 6 : GF_PX >= 8 ? 12 : 24;
   for(const pn of panels){
-    const ph = usable*pn.w/wsum, top = y + 6, bot = y + ph - 4;
+    const ph = usable*pn.w/wsum, top = y + (pn.id === "wind" ? 20 : 6), bot = y + ph - 4;   // wind: room for the arrows
     const ks = KINDS.filter(k => pn.kinds.includes(k.id) && sel.includes(k.id));
     g += '<rect x="0" y="' + y + '" width="' + W + '" height="' + ph + '" fill="rgba(255,255,255,.025)"/>';
     let lo, hi, step;
@@ -1206,7 +1213,7 @@ function gfDraw(keepScroll, toNow){
     }
     if(pn.id === "wind") win.forEach((h, i) => {
       if(i % Math.max(1, Math.round(26/GF_PX)) || h.dir == null) return;
-      g += windGlyph(X(i), top + 8, h.dir, h.past ? .5 : 1);
+      g += windGlyph(X(i), y + 10, h.dir, h.past ? .5 : 1);
     });
     if(pn.id === "wet"){
       /* rain blue, snow white (snow as snow depth), stacked; the past is lighter */
@@ -1222,6 +1229,9 @@ function gfDraw(keepScroll, toNow){
       for(const k of ks){
         const c = G_COL[k.id], vals = win.map(h => { const v = k.get(h); return v == null ? null : Y(v); });
         if(k.get2){ const v2 = win.map(h => { const v = k.get2(h); return v == null ? null : Y(v); });
+          /* label the dashed line the first time it shows after Now */
+          const gi = v2.findIndex((v, i) => i >= P0 && v != null);
+          if(gi >= 0) g += '<text x="' + (X(gi) + 4) + '" y="' + (v2[gi] - 5) + '" class="gfFz" style="fill:' + c + '">gusts</text>';
           g += '<path d="' + path(v2, 0, P0) + '" fill="none" stroke="' + c + '" stroke-width="1.3" stroke-dasharray="3 3" opacity=".35"/>' +
                '<path d="' + path(v2, P0, N) + '" fill="none" stroke="' + c + '" stroke-width="1.5" stroke-dasharray="3 3" opacity=".7"/>'; }
         g += '<path d="' + path(vals, 0, P0) + '" fill="none" stroke="' + c + '" stroke-width="1.8" opacity=".45"/>' +
