@@ -479,10 +479,17 @@ html:not(.phone) #phPlacesH, html:not(.phone) #phPlaces { display: none; }
 .gfRead { min-height: 36px; padding: 0 12px 6px; font-size: 12.5px; line-height: 1.35; }
 .gfRead b { color: #fff; margin-right: 4px; }
 .gfBody { flex: 1; display: flex; min-height: 0; overflow: hidden; }
-.gfAxis { flex: 0 0 34px; }
-.gfScroll { flex: 1; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; touch-action: pan-x; }
+.gfAxis { flex: 0 0 48px; }
+.gfScroll { flex: 1; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; touch-action: pan-x pinch-zoom; }
 .gfScroll::-webkit-scrollbar { display: none; }
 .gfT { font: 400 10.5px Figtree, system-ui, sans-serif; fill: rgba(200,214,236,.65); text-anchor: middle; }
 .gfDay { font: 600 11px Figtree, system-ui, sans-serif; fill: rgba(220,230,245,.85); }
 .gfV { font: 600 11px Figtree, system-ui, sans-serif; text-anchor: middle; }
 .gfA { font: 400 10.5px Figtree, system-ui, sans-serif; fill: rgba(200,214,236,.6); text-anchor: end; }
+
+.gfAl { font: 600 10.5px Figtree, system-ui, sans-serif; fill: rgba(255,226,170,.92); }
+.gfNow { font: 700 10.5px Figtree, system-ui, sans-serif; fill: #78e0f2; }
+.gfPast { font: 500 10px Figtree, system-ui, sans-serif; fill: rgba(200,214,236,.6); text-anchor: end; }
+.gfFz { font: 500 9.5px Figtree, system-ui, sans-serif; fill: #90c3f2; opacity: .8; }
+.gfU { font: 600 9.5px Figtree, system-ui, sans-serif; fill: rgba(200,214,236,.75); }
+.gfKey { font: 600 10px Figtree, system-ui, sans-serif; }
