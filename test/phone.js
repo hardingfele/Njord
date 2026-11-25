@@ -1142,7 +1142,9 @@ function gfDraw(keepScroll, toNow){
   const sel = gfSel().filter(id => avail.some(k => k.id === id));
   el.querySelector(".gfChips").innerHTML = avail.map(k => '<button data-g="' + k.id + '" class="' + (sel.includes(k.id) ? "on" : "") +
     '" style="--c:' + G_COL[k.id] + '"><i></i>' + k.name + (k.get2 ? " + gusts" : "") + '</button>').join("");
-  const legend = KINDS.filter(k => sel.includes(k.id)).map(k => '<span style="color:' + G_COL[k.id] + '">● ' + esc(k.name) + '</span>').join("  ");
+  /* the legend names the dashed gust line when there is one to see */
+  const legend = KINDS.filter(k => sel.includes(k.id)).map(k => '<span style="color:' + G_COL[k.id] + '">● ' + esc(k.name) +
+    (k.get2 && win.some(h => k.get2(h) != null) ? ' <span style="opacity:.75">┄ gusts</span>' : '') + '</span>').join("  ");
   const sc = el.querySelector(".gfScroll"), prevX = sc.scrollLeft;
   if(!win.length){ sc.innerHTML = ""; return; }
   const panels = GF_PANELS.filter(pn => pn.kinds.some(id => sel.includes(id)));
@@ -1229,9 +1231,6 @@ function gfDraw(keepScroll, toNow){
       for(const k of ks){
         const c = G_COL[k.id], vals = win.map(h => { const v = k.get(h); return v == null ? null : Y(v); });
         if(k.get2){ const v2 = win.map(h => { const v = k.get2(h); return v == null ? null : Y(v); });
-          /* label the dashed line the first time it shows after Now */
-          const gi = v2.findIndex((v, i) => i >= P0 && v != null);
-          if(gi >= 0) g += '<text x="' + (X(gi) + 4) + '" y="' + (v2[gi] - 5) + '" class="gfFz" style="fill:' + c + '">gusts</text>';
           g += '<path d="' + path(v2, 0, P0) + '" fill="none" stroke="' + c + '" stroke-width="1.3" stroke-dasharray="3 3" opacity=".35"/>' +
                '<path d="' + path(v2, P0, N) + '" fill="none" stroke="' + c + '" stroke-width="1.5" stroke-dasharray="3 3" opacity=".7"/>'; }
         g += '<path d="' + path(vals, 0, P0) + '" fill="none" stroke="' + c + '" stroke-width="1.8" opacity=".45"/>' +
