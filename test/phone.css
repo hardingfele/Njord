@@ -586,3 +586,5 @@ html.njWeb #auFull, html.njWeb #auGlobe { padding-top: 6px; }
 .auLat text { font: 400 9px Figtree, system-ui, sans-serif; fill: rgba(220,232,250,.6); }
 .auPin { font: 700 12px Figtree, system-ui, sans-serif; fill: #fff; text-anchor: middle; stroke: #0b111d; stroke-width: 3px; paint-order: stroke; }
 #auFull .gfTop .rdB, #auGlobe .gfTop .rdB { white-space: nowrap; flex: 0 0 auto; }
+#auGlobeIn .auGInfo { margin-top: 8px; } #auGlobeIn .auGInfo h3 { margin-top: 6px; }
+#auGlobeIn .auGlobeCard { padding: 0 !important; }

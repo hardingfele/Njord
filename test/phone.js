@@ -1511,7 +1511,7 @@ function auOpen(){
   }
   el.hidden = false; auLoadSW(); auDraw();
 }
-function auClose(){ const e = $("auFull"); if(e) e.hidden = true; auGlobeClose(); }
+function auClose(){ const e = $("auFull"); if(e) e.hidden = true; }
 function auDraw(){
   const el = $("auFull"); if(!el) return;
   const s = auSummary();
@@ -1572,39 +1572,30 @@ function auDraw(){
         '<span><b style="background:none;border-top:2px dashed #78e0f2;height:0;width:12px;border-radius:0"></b>Kp ' + need + ' line</span></div></section>';
     }
   }
-  h += '<button class="rdB auGo" id="auGlobeBtn">Where’s the aurora now ›</button>' +
+  /* build 54: where's the aurora now sits at the bottom of this page */
+  h += '<section class="pc" id="auGlobeIn"><h3>Where’s the aurora now <span class="tapHint auGT"></span></h3>' +
+       '<div class="auHemi"><button data-h="n">Northern lights</button><button data-h="s">Southern lights</button></div>' +
+       '<div class="auGBody"><div class="sub" style="padding:14px 0">Loading the map…</div></div></section>' +
        '<div class="sub auFine">Chance combines NOAA’s Kp forecast and OVATION model, the live solar wind, darkness, the moon and the cloud forecast. Aurora alerts are coming in Njord Sylv.</div>';
   el.querySelector(".auBody").innerHTML = h;
-  $("auGlobeBtn").onclick = () => auGlobeOpen();
+  $("auGlobeIn").querySelector(".auHemi").onclick = e => { const b = e.target.closest("[data-h]"); if(b){ AU.hemi = b.dataset.h; auGlobeDraw(); } };
+  auGlobeLoad();
 }
 
 /* ---- where's the aurora now: globe from above the pole ----
    Coastlines: Natural Earth 1:110m land (public domain), shipped as land.json.
    Aurora: NOAA OVATION grid (both hemispheres). Night side from the sun's position. */
-const auGlobeOpenNow = () => { const e = $("auGlobe"); return !!(e && !e.hidden); };
-function auGlobeClose(){ const e = $("auGlobe"); if(e) e.hidden = true; }
-function auGlobeOpen(){
-  let el = $("auGlobe");
-  if(!el){
-    el = document.createElement("div"); el.id = "auGlobe";
-    el.innerHTML = '<div class="gfTop"><button class="rdB" id="auGBack">‹ Aurora now</button><span class="gfTitle auGT"></span></div>' +
-      '<div class="auHemi"><button data-h="n">Northern lights</button><button data-h="s">Southern lights</button></div><div class="auGBody"></div>';
-    document.body.appendChild(el);
-    $("auGBack").onclick = auGlobeClose;
-    el.querySelector(".auHemi").onclick = e => { const b = e.target.closest("[data-h]"); if(b){ AU.hemi = b.dataset.h; auGlobeDraw(); } };
-  }
+function auGlobeLoad(){
   if(!AU.hemi) AU.hemi = PLACE.lat >= 0 ? "n" : "s";
-  el.hidden = false;
-  el.querySelector(".auGBody").innerHTML = '<div class="sub" style="padding:20px">Loading…</div>';
   const land = AU.land ? Promise.resolve(AU.land) : fetch("land.json").then(r => r.json()).then(j => (AU.land = j));
   const grid = AU.grid && Date.now() - AU.gridAt < 20*60e3 ? Promise.resolve(AU.grid)
     : cachedJSON(SWPC + "json/ovation_aurora_latest.json", 20*60e3).then(j => { AU.grid = j; AU.gridAt = Date.now(); return j; });
   Promise.all([land, grid.catch(() => null)]).then(() => auGlobeDraw()).catch(() => {
-    el.querySelector(".auGBody").innerHTML = '<div class="sub" style="padding:20px">Couldn’t load the map right now.</div>';
+    const b = $("auGlobeIn"); if(b) b.querySelector(".auGBody").innerHTML = '<div class="sub">Couldn’t load the map right now.</div>';
   });
 }
 function auGlobeDraw(){
-  const el = $("auGlobe"); if(!el || !AU.land) return;
+  const el = $("auGlobeIn"); if(!el || !AU.land) return;
   const south = AU.hemi === "s", R = 165, C = 180, d2 = Math.PI/180;
   el.querySelectorAll(".auHemi button").forEach(b => b.classList.toggle("on", b.dataset.h === AU.hemi));
   const here = (PLACE.lat < 0) === south;
@@ -1693,9 +1684,9 @@ function auGlobeDraw(){
   else info = '<h3>' + (south ? "Southern lights" : "Northern lights") + '</h3><div class="sub">' + (south
     ? "Aurora australis — best seen from Tasmania, southern New Zealand, Patagonia and Antarctica. Save a place there to get its chance."
     : "Aurora borealis — best seen from Alaska, Canada, Iceland, Scandinavia and northern Russia.") + '</div>';
-  el.querySelector(".auGBody").innerHTML = '<section class="pc auGlobeCard">' + svg +
+  el.querySelector(".auGBody").innerHTML = '<div class="auGlobeCard">' + svg +
     '<div class="auLeg"><span><b style="background:#6ff0b0"></b>Likely</span><span><b style="background:#b98cf0"></b>Possible</span><span><b style="background:rgba(4,8,18,.7);border:1px solid #445"></b>Night</span>' +
-    (vl ? '<span><b style="background:#f2c46d"></b>View line</span>' : '') + '</div></section><section class="pc">' + info + '</section>';
+    (vl ? '<span><b style="background:#f2c46d"></b>View line</span>' : '') + '</div></div><div class="auGInfo">' + info + '</div>';
 }
 
 window.phRedraw = () => { try { render(true); } catch(e){} };
@@ -1883,7 +1874,6 @@ top.addEventListener("click", e => {
 
 /* Android back button: close what is open, then scroll the sheet home */
 window.njordBack = function(){
-  if(auGlobeOpenNow()){ auGlobeClose(); return true; }
   if(auOpenNow()){ auClose(); return true; }
   if(gfOpenNow()){ const el = $("gfFull"); if(el.querySelector(".gfDrawer.open")) el.gfDrawer(false); else gfClose(); return true; }
   if(rdOpenNow()){ if(!$("rdLay").hidden) $("rdLay").hidden = true; else if(!$("rdSet").hidden) $("rdSet").hidden = true; else rdClose(); return true; }

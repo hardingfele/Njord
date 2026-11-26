@@ -546,3 +546,45 @@ html.njWeb #gfFull { padding-top: 6px; }
 #gfFull .gfRead { max-height: 2.9em; line-height: 1.45; }
 #gfFull .gfReadWrap.more .gfRead { padding-right: 78px; }
 #gfFull .gfReadWrap { margin-bottom: 10px; }
+
+/* ---- build 54: aurora card, detail page, globe ---- */
+.auCard { background: linear-gradient(135deg, rgba(80,240,170,.14), rgba(120,110,240,.12)); border: 1px solid rgba(110,240,180,.28); cursor: pointer; }
+.auCard.quiet { background: rgba(14,22,38,.62); border-color: rgba(160,190,235,.12); }
+.auQuiet { font-size: 15px; color: #e8eef8; margin: 2px 0 4px; }
+.auScore { display: flex; align-items: center; gap: 14px; }
+.auRing { width: 78px; height: 78px; flex: 0 0 78px; }
+.auRn { font: 700 22px Figtree, system-ui, sans-serif; fill: #fff; text-anchor: middle; }
+.auRs { font: 600 8.5px Figtree, system-ui, sans-serif; fill: rgba(200,214,236,.7); letter-spacing: .1em; text-anchor: middle; }
+.auV { font: 600 19px/1.2 Figtree, system-ui, sans-serif; color: #fff; }
+.auV small { display: block; font-size: 13.5px; font-weight: 400; color: rgba(200,214,236,.8); margin-top: 3px; }
+.auFacs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+.auFac { background: rgba(255,255,255,.045); border-radius: 12px; padding: 8px 10px; font-size: 12.5px; color: rgba(200,214,236,.78); }
+.auFac b { display: block; font-size: 14.5px; font-weight: 600; }
+.auFac b.ok { color: #7fe0a4; } .auFac b.meh { color: #f2c46d; } .auFac b.bad { color: #ef8b8b; }
+#auFull, #auGlobe { position: fixed; inset: 0; z-index: 8500; background: linear-gradient(#152036, #0b111d 70%); color: #e8eef8; overflow-y: auto;
+  font: 400 14px/1.4 Figtree, system-ui, sans-serif; padding: calc(6px + env(safe-area-inset-top)) 12px calc(16px + env(safe-area-inset-bottom)); }
+#auGlobe { z-index: 8600; }
+html.njWeb #auFull, html.njWeb #auGlobe { padding-top: 6px; }
+#auFull[hidden], #auGlobe[hidden] { display: none; }
+#auFull .gfTop, #auGlobe .gfTop { padding: 0 0 8px; }
+#auFull .gfTitle, #auGlobe .gfTitle { white-space: normal; letter-spacing: .06em; text-transform: none; font-size: 12px; line-height: 1.3; }
+#auFull .pc, #auGlobe .pc { margin: 0 0 12px; }
+.auSvg { width: 100%; height: auto; display: block; margin-top: 6px; }
+.auLeg { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 11.5px; color: rgba(200,214,236,.72); margin: 6px 0 4px; }
+.auLeg b { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+.auRows { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; margin-top: 10px; }
+.auRows div span { display: block; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: rgba(170,190,220,.65); font-weight: 600; }
+.auRows div b { font-size: 17px; font-weight: 500; color: #fff; }
+.auGo { display: block; width: 100%; margin: 4px 0 10px; font-size: 15px; padding: 12px; }
+.auFine { font-size: 11.5px; opacity: .75; padding: 0 4px; }
+.auHemi { display: flex; gap: 6px; margin: 0 0 10px; }
+.auHemi button { flex: 1; padding: 8px 0; border-radius: 12px; background: rgba(255,255,255,.05); border: 1px solid rgba(160,190,235,.16);
+  font: 600 13.5px Figtree, system-ui, sans-serif; color: rgba(226,234,246,.75); }
+.auHemi button.on { background: rgba(120,224,242,.18); border-color: rgba(120,224,242,.6); color: #fff; }
+.auGlobeCard { padding: 8px !important; }
+.auGlobeSvg { width: 100%; height: auto; display: block; }
+.auLat text { font: 400 9px Figtree, system-ui, sans-serif; fill: rgba(220,232,250,.6); }
+.auPin { font: 700 12px Figtree, system-ui, sans-serif; fill: #fff; text-anchor: middle; stroke: #0b111d; stroke-width: 3px; paint-order: stroke; }
+#auFull .gfTop .rdB, #auGlobe .gfTop .rdB { white-space: nowrap; flex: 0 0 auto; }
+#auGlobeIn .auGInfo { margin-top: 8px; } #auGlobeIn .auGInfo h3 { margin-top: 6px; }
+#auGlobeIn .auGlobeCard { padding: 0 !important; }
