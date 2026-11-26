@@ -2056,21 +2056,26 @@ function rdCheck(layer){
   const L = RD.layers.find(x => x.id === layer) || RD.layers[0];
   if(RDS.busy || (RDS.layer === L.id && Date.now() - RDS.at < 3*60e3)) return;
   RDS.busy = true;
-  fetch(RD.W + L.wms + "/ows?service=WMS&version=1.3.0&request=GetCapabilities", { cache: "no-store" })
-    .then(r => r.ok ? r.text() : Promise.reject(r.status))
+  /* build 53: give up after 20 s instead of hanging; keep the reason for the developer box */
+  const ac = window.AbortController ? new AbortController() : null, tm = ac && setTimeout(() => ac.abort(), 20000);
+  fetch(RD.W + L.wms + "/ows?service=WMS&version=1.3.0&request=GetCapabilities", { cache: "no-store", signal: ac && ac.signal })
+    .then(r => r.ok ? r.text() : Promise.reject("HTTP " + r.status))
     .then(t => {
       const m = /<Dimension[^>]*name="time"[^>]*default="([^"]+)"/i.exec(t) || /<Dimension[^>]*default="([^"]+)"[^>]*name="time"/i.exec(t);
       const ms = m ? Date.parse(m[1]) : NaN;
       if(!isFinite(ms)) throw "no time";
       RDS.latest = ms; RDS.fails = 0; RDS.tileErr = 0;
     })
-    .catch(() => { RDS.fails++; })
-    .finally(() => { RDS.busy = false; RDS.layer = L.id; RDS.at = Date.now(); rdNoteSync(); });
+    .catch(e => { RDS.fails++; RDS.why = String(e && e.name || e); })
+    .finally(() => { if(tm) clearTimeout(tm); RDS.busy = false; RDS.layer = L.id; RDS.at = Date.now(); rdNoteSync(); });
 }
 function rdNoteText(){
   const off = navigator.onLine === false;
   if(off) return "";                                   // no connection: the app says so elsewhere
-  if(RDS.fails >= 2 || (RDS.fails >= 1 && RDS.tileErr >= 3))
+  /* build 53: radar pictures arriving in the last 10 minutes prove the radar works,
+     even if NOAA's list of times couldn't be read - don't call it unavailable then */
+  const tilesOk = RDS.tileOk && Date.now() - RDS.tileOk < 10*60e3 && RDS.tileErr < 3;
+  if(!tilesOk && (RDS.fails >= 2 || (RDS.fails >= 1 && RDS.tileErr >= 3)))
     return "Radar is unavailable right now. This usually happens when NOAA's radar servers aren't responding or are having an outage. Njord keeps checking.";
   if(RDS.latest && Date.now() - RDS.latest > 30*60e3)
     return "The newest radar NOAA has is from " + rdClock(RDS.latest) + ". This usually happens when NOAA's radar servers fall behind. Njord keeps checking.";
@@ -2081,6 +2086,7 @@ function rdNoteSync(){
   document.querySelectorAll(".rdNote").forEach(el => { el.textContent = t; el.hidden = !t; });
 }
 function rdWatch(map){
+  map.on("sourcedata", e => { if(e && e.sourceId && /^rad\d/.test(e.sourceId) && e.tile && e.isSourceLoaded){ RDS.tileOk = Date.now(); RDS.tileErr = 0; } });
   map.on("error", e => { if(e && e.sourceId && /^rad\d/.test(e.sourceId)){ RDS.tileErr++; if(RDS.tileErr === 3){ RDS.at = 0; rdCheck(RD.layer); } } });
 }
 setInterval(rdNoteSync, 60e3);

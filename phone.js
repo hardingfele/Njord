@@ -1067,11 +1067,13 @@ function gfHistory(){
 function gfOpen(){
   let el = $("gfFull");
   if(!el){
+    if(!window.NjordAndroid) document.documentElement.classList.add("njWeb");
     el = document.createElement("div"); el.id = "gfFull";
     /* build 52: the data list slides out from the left, so the graph gets the whole screen */
-    el.innerHTML = '<div class="gfTop"><button class="rdB" id="gfBack">‹ <span></span></button><span class="gfTitle">Hourly graph</span></div>' +
+    el.innerHTML = '<div class="gfTop"><button class="rdB" id="gfBack">‹ <span></span></button><span class="gfTitle">Hourly graph</span>' +
+      '</div>' +
       '<button class="gfPull" id="gfData" aria-label="Choose data"><i></i></button>' +
-      '<div class="gfRead"></div><div class="gfBody"><div class="gfAxis"></div><div class="gfScroll"></div></div>' +
+      '<div class="gfReadWrap"><div class="gfRead"></div><button class="gfMoreArrow" type="button">▾ more</button></div><div class="gfBody"><div class="gfAxis"></div><div class="gfScroll"></div></div>' +
       '<div class="gfShade" hidden></div><div class="gfDrawer"><div class="gfDHead">Data<button id="gfDClose" aria-label="Close">✕</button></div><div class="gfChips"></div></div>';
     document.body.appendChild(el);
     $("gfBack").onclick = gfClose;
@@ -1096,24 +1098,70 @@ function gfOpen(){
       try { localStorage.setItem("njord.graphMulti", JSON.stringify(a)); } catch(err){}
       gfDraw(true);
     };
-    /* pinch to zoom: hour width 5-36 px, keeping the hour under the fingers in place */
-    const sc = el.querySelector(".gfScroll"); let pin = null;
-    sc.addEventListener("touchstart", e => { if(e.touches.length === 2){
-      const d = Math.abs(e.touches[0].clientX - e.touches[1].clientX), mid = (e.touches[0].clientX + e.touches[1].clientX)/2 - sc.getBoundingClientRect().left;
-      pin = { d: Math.max(d, 20), px: GF_PX, hour: (sc.scrollLeft + mid - 10)/GF_PX, mid }; } }, { passive: true });
-    sc.addEventListener("touchmove", e => { if(pin && e.touches.length === 2){
+    /* build 53: + / − zoom (hour width 5-36 px), keeping the middle hour in place */
+    const sc = el.querySelector(".gfScroll");
+    const zoom = f => {
+      const mid = sc.clientWidth/2, hour = (sc.scrollLeft + mid - 10)/GF_PX;
+      GF_PX = Math.max(5, Math.min(36, GF_PX*f)); gfDraw(false);
+      sc.scrollLeft = hour*GF_PX + 10 - mid;
+      try { localStorage.setItem("njord.graphPx", String(GF_PX)); } catch(err){}
+    };
+    void zoom;                                    // build 53: buttons removed; pinch only
+    /* pinch stretches the time axis only - the page itself never zooms here.
+       During the pinch the drawn graph is just stretched sideways (cheap and
+       smooth); when the fingers lift it is redrawn once at the new hour width. */
+    let pin = null;
+    const body = el.querySelector(".gfBody");      // fingers may land on the scale too
+    const span = t => Math.max(40, Math.abs(t[0].clientX - t[1].clientX));
+    body.addEventListener("touchstart", e => {
+      if(e.touches.length !== 2) return;
+      const svg = sc.querySelector("svg"); if(!svg) return;
+      const mid = (e.touches[0].clientX + e.touches[1].clientX)/2 - sc.getBoundingClientRect().left;
+      pin = { d: span(e.touches), px: GF_PX, k: 1, mid, at: sc.scrollLeft + mid, svg };
+      svg.style.transformOrigin = pin.at + "px 0"; svg.style.willChange = "transform";
+    }, { passive: true });
+    body.addEventListener("touchmove", e => {
+      if(!pin || e.touches.length !== 2) return;
       e.preventDefault();
-      const d = Math.abs(e.touches[0].clientX - e.touches[1].clientX);
-      const px = Math.max(5, Math.min(36, pin.px*d/pin.d));
-      if(Math.abs(px - GF_PX) > 0.4){ GF_PX = px; gfDraw(false); sc.scrollLeft = pin.hour*GF_PX + 10 - pin.mid; }
-    } }, { passive: false });
-    sc.addEventListener("touchend", e => { if(e.touches.length < 2){ if(pin){ try { localStorage.setItem("njord.graphPx", String(GF_PX)); } catch(err){} } pin = null; } });
+      pin.k = Math.max(5/pin.px, Math.min(36/pin.px, span(e.touches)/pin.d));
+      pin.svg.style.transform = "scaleX(" + pin.k.toFixed(3) + ")";
+    }, { passive: false });
+    const endPinch = () => {
+      if(!pin) return;
+      const p = pin; pin = null;
+      p.svg.style.transform = ""; p.svg.style.willChange = "";
+      if(Math.abs(p.k - 1) < 0.03) return;
+      const hour = (p.at - 10)/p.px;
+      GF_PX = p.px*p.k; gfDraw(false);
+      sc.scrollLeft = hour*GF_PX + 10 - p.mid;
+      try { localStorage.setItem("njord.graphPx", String(GF_PX)); } catch(err){}
+    };
+    body.addEventListener("touchend", e => { if(e.touches.length < 2) endPinch(); });
+    body.addEventListener("touchcancel", endPinch);
     try { const px = +localStorage.getItem("njord.graphPx"); if(px >= 5 && px <= 36) GF_PX = px; } catch(e){}
   }
   el.hidden = false;
   $("gfBack").querySelector("span").textContent = PLACE.short || PLACE.name || "";
   gfHistory();
   gfDraw(false, true);
+}
+/* build 53: the legend / reading line is at most two lines; when there is more,
+   a fade and a small arrow show it scrolls */
+function gfMore(){
+  const rd = $("gfFull") && $("gfFull").querySelector(".gfRead"); if(!rd) return;
+  const wrap = rd.parentNode, btn = wrap.querySelector(".gfMoreArrow");
+  const upd = () => {
+    const over = rd.scrollHeight - rd.clientHeight > 2, end = rd.scrollHeight - rd.scrollTop - rd.clientHeight <= 4;
+    rd.classList.toggle("more", over && !end); wrap.classList.toggle("more", over);
+    if(btn) btn.textContent = end ? "▴ back" : "▾ more";
+  };
+  rd.onscroll = upd; requestAnimationFrame(upd);
+  /* "more" scrolls down a step; at the end it reads "back" and returns to the top */
+  if(btn) btn.onclick = () => {
+    const end = rd.scrollHeight - rd.scrollTop - rd.clientHeight <= 4;
+    const left = rd.scrollHeight - rd.clientHeight - rd.scrollTop;
+    rd.scrollTo({ top: end ? 0 : rd.scrollTop + (left < rd.clientHeight*1.4 ? left : rd.clientHeight), behavior: "smooth" });
+  };
 }
 function gfClose(){ const el = $("gfFull"); if(el){ el.hidden = true; if(el.gfDrawer) el.gfDrawer(false); } }
 const gfOpenNow = () => { const el = $("gfFull"); return !!(el && !el.hidden); };
@@ -1263,9 +1311,9 @@ function gfDraw(keepScroll, toNow){
              (k.get2 && k.get2(h) != null ? " (gusts " + k.get2(h) + ")" : "") + '</span>';
     }).filter(Boolean);
     const when = i === P0 ? "Now" : (h.past ? "Measured " : "") + dayName(h.time) + " " + shortTime(hr*60);
-    rd.innerHTML = '<b>' + esc(when) + '</b> ' + (parts.join(" · ") || '<span class="sub">no report</span>');
+    rd.innerHTML = '<b>' + esc(when) + '</b> ' + (parts.join(" · ") || '<span class="sub">no report</span>'); gfMore();
   };
-  rd.innerHTML = legend;
+  rd.innerHTML = legend; gfMore();
 }
 /* wind arrows on the graph. Normal: a weathervane arrow (tail + open head)
    pointing where the wind is going, like TV weather and the Wind card.
@@ -2008,21 +2056,26 @@ function rdCheck(layer){
   const L = RD.layers.find(x => x.id === layer) || RD.layers[0];
   if(RDS.busy || (RDS.layer === L.id && Date.now() - RDS.at < 3*60e3)) return;
   RDS.busy = true;
-  fetch(RD.W + L.wms + "/ows?service=WMS&version=1.3.0&request=GetCapabilities", { cache: "no-store" })
-    .then(r => r.ok ? r.text() : Promise.reject(r.status))
+  /* build 53: give up after 20 s instead of hanging; keep the reason for the developer box */
+  const ac = window.AbortController ? new AbortController() : null, tm = ac && setTimeout(() => ac.abort(), 20000);
+  fetch(RD.W + L.wms + "/ows?service=WMS&version=1.3.0&request=GetCapabilities", { cache: "no-store", signal: ac && ac.signal })
+    .then(r => r.ok ? r.text() : Promise.reject("HTTP " + r.status))
     .then(t => {
       const m = /<Dimension[^>]*name="time"[^>]*default="([^"]+)"/i.exec(t) || /<Dimension[^>]*default="([^"]+)"[^>]*name="time"/i.exec(t);
       const ms = m ? Date.parse(m[1]) : NaN;
       if(!isFinite(ms)) throw "no time";
       RDS.latest = ms; RDS.fails = 0; RDS.tileErr = 0;
     })
-    .catch(() => { RDS.fails++; })
-    .finally(() => { RDS.busy = false; RDS.layer = L.id; RDS.at = Date.now(); rdNoteSync(); });
+    .catch(e => { RDS.fails++; RDS.why = String(e && e.name || e); })
+    .finally(() => { if(tm) clearTimeout(tm); RDS.busy = false; RDS.layer = L.id; RDS.at = Date.now(); rdNoteSync(); });
 }
 function rdNoteText(){
   const off = navigator.onLine === false;
   if(off) return "";                                   // no connection: the app says so elsewhere
-  if(RDS.fails >= 2 || (RDS.fails >= 1 && RDS.tileErr >= 3))
+  /* build 53: radar pictures arriving in the last 10 minutes prove the radar works,
+     even if NOAA's list of times couldn't be read - don't call it unavailable then */
+  const tilesOk = RDS.tileOk && Date.now() - RDS.tileOk < 10*60e3 && RDS.tileErr < 3;
+  if(!tilesOk && (RDS.fails >= 2 || (RDS.fails >= 1 && RDS.tileErr >= 3)))
     return "Radar is unavailable right now. This usually happens when NOAA's radar servers aren't responding or are having an outage. Njord keeps checking.";
   if(RDS.latest && Date.now() - RDS.latest > 30*60e3)
     return "The newest radar NOAA has is from " + rdClock(RDS.latest) + ". This usually happens when NOAA's radar servers fall behind. Njord keeps checking.";
@@ -2033,6 +2086,7 @@ function rdNoteSync(){
   document.querySelectorAll(".rdNote").forEach(el => { el.textContent = t; el.hidden = !t; });
 }
 function rdWatch(map){
+  map.on("sourcedata", e => { if(e && e.sourceId && /^rad\d/.test(e.sourceId) && e.tile && e.isSourceLoaded){ RDS.tileOk = Date.now(); RDS.tileErr = 0; } });
   map.on("error", e => { if(e && e.sourceId && /^rad\d/.test(e.sourceId)){ RDS.tileErr++; if(RDS.tileErr === 3){ RDS.at = 0; rdCheck(RD.layer); } } });
 }
 setInterval(rdNoteSync, 60e3);
