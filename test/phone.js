@@ -1330,6 +1330,374 @@ function dayName(t){
   const d = new Date(String(t).slice(0, 10) + "T12:00:00Z");
   return ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][d.getUTCDay()];
 }
+
+/* ==== AURORA (app build 54) ===================================================
+   A "chance of seeing it from here" for tonight, hour by hour, 0-100:
+     geomagnetic reach  Kp forecast for the hour against this place's magnetic
+                        latitude (the existing kpMargin rule); for the next two
+                        hours nudged by the live solar wind (Bz south and fast
+                        wind help) and by OVATION when it shows aurora in sight
+     darkness           0 before nautical dusk, full at astronomical dark
+     moon               a bright moon high up washes faint aurora out
+     clouds             the forecast's cloud cover for the hour
+   Data: NOAA SWPC (Kp forecast, OVATION - already loaded by the scene - and
+   the 2-hour solar wind from the DSCOVR/ACE spacecraft). */
+const AU = { sw: null, swAt: 0, swBusy: false, grid: null, gridAt: 0, land: null, hemi: null };
+const auRows = j => {
+  if(!Array.isArray(j) || j.length < 2 || !Array.isArray(j[0])) return Array.isArray(j) ? j : [];
+  const h = j[0].map(x => String(x).toLowerCase());
+  return j.slice(1).map(r => Object.fromEntries(h.map((k, i) => [k, r[i]])));
+};
+const auT = s => Date.parse(String(s).replace(" ", "T") + (/[zZ]$/.test(String(s)) ? "" : "Z"));
+function auLoadSW(){
+  if(AU.swBusy || Date.now() - AU.swAt < 5*60e3) return;
+  AU.swBusy = true;
+  const get = u => fetch(SWPC + u, { cache: "no-store" }).then(r => r.ok ? r.json() : Promise.reject(r.status));
+  Promise.all([get("products/solar-wind/mag-2-hour.json"), get("products/solar-wind/plasma-2-hour.json")]).then(([m, p]) => {
+    const mag = auRows(m).map(r => ({ t: auT(r.time_tag), bz: parseFloat(r.bz_gsm), bt: parseFloat(r.bt) })).filter(r => isFinite(r.t) && isFinite(r.bz));
+    const pl  = auRows(p).map(r => ({ t: auT(r.time_tag), v: parseFloat(r.speed), n: parseFloat(r.density) })).filter(r => isFinite(r.t) && isFinite(r.v));
+    AU.sw = { mag, pl }; AU.swAt = Date.now();
+  }).catch(() => { AU.swAt = Date.now() - 4*60e3; })          // try again in a minute
+    .finally(() => { AU.swBusy = false; renderAurora(); if(auOpenNow()) auDraw(); });
+}
+/* the last ~15 minutes, so one odd reading doesn't swing the score */
+function auSWNow(){
+  const s = AU.sw; if(!s || !s.mag.length) return null;
+  const tEnd = s.mag[s.mag.length - 1].t;
+  if(Date.now() - tEnd > 45*60e3) return null;                   // stale
+  const m = s.mag.filter(r => tEnd - r.t <= 15*60e3), p = s.pl.filter(r => tEnd - r.t <= 15*60e3);
+  const avg = (a, k) => a.length ? a.reduce((x, r) => x + r[k], 0)/a.length : null;
+  const v = avg(p, "v");
+  return { bz: avg(m, "bz"), v, n: avg(p.filter(r => isFinite(r.n)), "n"), t: tEnd };
+}
+const auKey = t => { const p = zonedParts(new Date(t), PLACE.tz); return p.year + "-" + pad(p.month) + "-" + pad(p.day) + "T" + pad(p.hour); };
+function auCloudAt(t){
+  const k = auKey(t), h = WX && (WX.hours || []).find(x => String(x.time).slice(0, 13) === k);
+  return h && h.cloud != null ? h.cloud : null;
+}
+const auML = () => Math.abs(magLat(PLACE.lat, PLACE.lng));
+const auNeedKp = () => Math.max(0, Math.ceil((61.5 - auML())/2));   // horizonEdge(kp) <= |magnetic lat|
+function auHours(){
+  const P = PLACE, ml = auML(), now = Date.now(), start = Math.floor(now/3600e3)*3600e3, sw = auSWNow();
+  const ov = AUR.ov && AUR.ov.best && Date.now() - AUR.ovAt < 2*3600e3 ? AUR.ov.best : null;
+  const out = [];
+  for(let k = 0; k < 20; k++){
+    const t = start + k*3600e3 + 1800e3, d = new Date(t);
+    const sun = sunSky(P, d).alt;
+    const D = sun > -6 ? 0 : sun > -12 ? (-6 - sun)/6*0.6 : sun > -18 ? 0.6 + (-12 - sun)/6*0.4 : 1;
+    const ms = moonSky(P, d), il = moonPhase(d).illum;
+    const M = ms.alt > 0 ? 1 - 0.5*il*Math.min(1, 0.35 + ms.alt/40) : 1;
+    const cl = auCloudAt(t), C = cl == null ? 1 : 1 - 0.95*cl/100;
+    const kp = kpAt(t);
+    let G = kp == null ? 0 : clamp((kpMargin(kp, ml) + 2)/7, 0, 1);
+    if(k < 2 && sw) G = clamp(G + 0.25*clamp(-sw.bz/10, -0.6, 1) + 0.1*clamp((sw.v - 400)/300, 0, 1), 0, 1);
+    /* OVATION showing aurora in sight lifts the next two hours - a faint glow
+       far down on the horizon only a little */
+    if(k < 2 && ov) G = Math.max(G, clamp((ov.score - 8)/30, 0, 1));
+    out.push({ t, kp, sun, D, M, il, moonUp: ms.alt > 0, cl, G, clear: Math.round(100*G*D*M), score: Math.round(100*G*D*M*C) });
+  }
+  /* tonight: from now (or dusk) to dawn */
+  const first = out.findIndex(h => h.D > 0);
+  if(first < 0) return [];
+  let last = first; while(last + 1 < out.length && out[last + 1].D > 0) last++;
+  return out.slice(Math.max(0, first - 1), last + 2);
+}
+const auHr = t => { const p = zonedParts(new Date(t), PLACE.tz); return shortTime(p.hour*60 + p.minute); };
+const auHrTop = t => { const p = zonedParts(new Date(t - 1800e3), PLACE.tz); return shortTime(p.hour*60); };
+function auSummary(){
+  if(!CONFIG.showAurora || !PLACE || auML() < 33) return null;
+  const hs = auHours(), dark = hs.filter(h => h.D > 0);
+  if(!dark.length) return null;
+  const best = Math.max(...dark.map(h => h.score)), i = hs.findIndex(h => h.score === best);
+  let a = i, b = i; const cut = Math.max(10, best*0.75);
+  while(a > 0 && hs[a - 1].score >= cut) a--; while(b < hs.length - 1 && hs[b + 1].score >= cut) b++;
+  const now = Date.now(), kpMax = nightKp(now, now + 18*3600e3), ml = auML(), sw = auSWNow();
+  const dir = (PLACE.lat >= 0) ? "north" : "south";
+  return { hs, best, w0: hs[a].t - 1800e3, w1: hs[b].t + 1800e3, kpMax, ml, sw, dir,
+           overhead: kpMax != null && kpMargin(kpMax, ml) >= 5.5 };
+}
+function auVerdict(s){
+  if(s.best >= 70) return "Good chance — look " + s.dir;
+  if(s.best >= 45) return "Fair chance — look " + s.dir;
+  if(s.best >= 20) return "Slight chance, low in the " + s.dir;
+  return null;
+}
+/* next night (within ~3 days) whose Kp reaches this place */
+function auNextChance(){
+  if(!AUR.kp) return null;
+  const ml = auML(), base = Date.now() + 12*3600e3;
+  for(let n = 0; n < 3; n++){
+    const from = base + n*24*3600e3, kp = nightKp(from, from + 14*3600e3);
+    if(kp != null && kpMargin(kp, ml) >= 0){
+      const p = zonedParts(new Date(from + 4*3600e3), PLACE.tz);
+      const day = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"][new Date(Date.UTC(p.year, p.month - 1, p.day)).getUTCDay()];
+      return day + " night, Kp " + Math.round(kp) + " forecast";
+    }
+  }
+  return null;
+}
+function auMoonSet(fromT){
+  const P = PLACE;
+  if(moonSky(P, new Date(fromT)).alt <= 0) return null;
+  for(let t = fromT; t < fromT + 14*3600e3; t += 10*60000){
+    if(sunSky(P, new Date(t)).alt > -6 && t > fromT + 3600e3) return -1;   // dawn first: up all night
+    if(moonSky(P, new Date(t)).alt <= 0) return t;
+  }
+  return -1;                                                     // up all night
+}
+function auFactors(s){
+  const f = [], sw = s.sw;
+  if(sw){
+    const bz = Math.round(sw.bz), v = Math.round(sw.v);
+    if(bz <= -5) f.push(["ok", "Solar wind ✓", "Bz south " + Math.abs(bz) + " nT · " + v + " km/s"]);
+    else if(bz < 0) f.push(["meh", "Solar wind fair", "Bz south " + Math.abs(bz) + " nT · " + v + " km/s"]);
+    else f.push(["bad", "Solar wind quiet", "Bz north " + bz + " nT · " + v + " km/s"]);
+  } else f.push(["meh", "Solar wind", "no reading right now"]);
+  if(s.kpMax != null){
+    const k = Math.round(s.kpMax), g = gScale(s.kpMax), m = kpMargin(s.kpMax, s.ml);
+    f.push([m >= 0 ? "ok" : m >= -2 ? "meh" : "bad", "Kp " + k + " forecast", g ? "G" + g + " storm" + (m >= 0 ? " · reaches you" : "") : m >= 0 ? "reaches you" : "you need Kp " + auNeedKp()]);
+  } else f.push(["meh", "Kp forecast", "not loaded yet"]);
+  const dk = s.hs.filter(h => h.D > 0.5 && h.cl != null);
+  if(dk.length){
+    const avg = Math.round(dk.reduce((a, h) => a + h.cl, 0)/dk.length);
+    let sub = avg < 20 ? "mostly clear" : avg > 80 ? "overcast" : "partly cloudy";
+    const firstClear = dk.findIndex(h => h.cl < 30);
+    if(dk[0].cl >= 50 && firstClear > 0) sub = "clearing after " + auHrTop(dk[firstClear].t);
+    else if(dk[0].cl < 30 && dk.some(h => h.cl >= 60)) sub = "clouding over after " + auHrTop(dk.find(h => h.cl >= 60).t);
+    f.push([avg < 30 ? "ok" : avg < 70 ? "meh" : "bad", "Clouds " + avg + "%", sub]);
+  } else f.push(["meh", "Clouds", "no forecast"]);
+  const w = s.hs.find(h => h.t >= s.w0) || s.hs[0], il = Math.round(w.il*100);
+  const set = auMoonSet(Date.now());
+  if(!w.moonUp) f.push(["ok", "Moon down", il + "% lit" + (set && set > 0 ? ", sets " + auHr(set) : "")]);
+  else f.push([il > 60 ? "bad" : "meh", il > 60 ? "Bright moon" : "Moon up", il + "% lit" + (set === -1 ? ", up all night" : set ? ", sets " + auHr(set) : "")]);
+  return f;
+}
+function auRing(v){
+  const c = 2*Math.PI*33, col = v >= 45 ? "#6ff0b0" : v >= 20 ? "#f2c46d" : "#8796b0";
+  return '<svg class="auRing" viewBox="0 0 80 80"><circle cx="40" cy="40" r="33" fill="none" stroke="rgba(255,255,255,.1)" stroke-width="8"/>' +
+    '<circle cx="40" cy="40" r="33" fill="none" stroke="' + col + '" stroke-width="8" stroke-linecap="round" stroke-dasharray="' + (c*v/100).toFixed(1) + ' ' + c.toFixed(1) +
+    '" transform="rotate(-90 40 40)"/><text x="40" y="45" class="auRn">' + v + '</text><text x="40" y="59" class="auRs">OF 100</text></svg>';
+}
+function renderAurora(){
+  const el = $("phAur");
+  let s = null; try { s = auSummary(); } catch(e){}
+  if(!s){ el.innerHTML = ""; return; }
+  auLoadSW();
+  const v = auVerdict(s);
+  if(!v){
+    const nx = auNextChance();
+    el.innerHTML = '<section class="pc auCard quiet" data-au="1"><h3>Aurora tonight <span class="tapHint">details ›</span></h3>' +
+      '<div class="auQuiet">Unlikely from ' + esc(placeName(PLACE)) + (s.kpMax != null ? ' · Kp ' + Math.round(s.kpMax) : '') +
+      (s.sw && s.sw.bz > -2 ? ', solar wind calm' : '') + '</div>' +
+      '<div class="sub">' + (nx ? "Next chance: " + esc(nx) : "No aurora expected here in the next 3 days") + '</div></section>';
+  } else {
+    el.innerHTML = '<section class="pc auCard" data-au="1"><h3>Aurora tonight <span class="tapHint">details ›</span></h3>' +
+      '<div class="auScore">' + auRing(s.best) + '<div class="auV">' + esc(v) + '<small>Best ' + esc(auHr(s.w0)) + ' – ' + esc(auHr(s.w1)) +
+      (s.overhead ? ' · may reach overhead' : '') + '</small></div></div>' +
+      '<div class="auFacs">' + auFactors(s).map(x => '<div class="auFac"><b class="' + x[0] + '">' + esc(x[1]) + '</b>' + esc(x[2]) + '</div>').join("") + '</div></section>';
+  }
+  el.firstChild.onclick = () => auOpen();
+}
+
+/* ---- detail page ---- */
+const auOpenNow = () => { const e = $("auFull"); return !!(e && !e.hidden); };
+function auOpen(){
+  let el = $("auFull");
+  if(!el){
+    el = document.createElement("div"); el.id = "auFull";
+    el.innerHTML = '<div class="gfTop"><button class="rdB" id="auBack">‹ Aurora</button><span class="gfTitle auSub"></span></div><div class="auBody"></div>';
+    document.body.appendChild(el);
+    $("auBack").onclick = auClose;
+  }
+  el.hidden = false; auLoadSW(); auDraw();
+}
+function auClose(){ const e = $("auFull"); if(e) e.hidden = true; auGlobeClose(); }
+function auDraw(){
+  const el = $("auFull"); if(!el) return;
+  const s = auSummary();
+  el.querySelector(".auSub").textContent = placeName(PLACE) + " · magnetic latitude " + Math.round(auML()) + "° · Kp " + auNeedKp() + " reaches you";
+  let h = "";
+  if(s){
+    /* tonight hour by hour: grey = what clouds take away, green = chance with clouds */
+    const hs = s.hs, n = hs.length, W = 300, H = 92, bw = W/n;
+    let g = "";
+    hs.forEach((x, i) => {
+      const yc = H - 14 - x.clear/100*(H - 24), ys = H - 14 - x.score/100*(H - 24);
+      if(x.clear > x.score) g += '<rect x="' + (i*bw + 1) + '" y="' + yc + '" width="' + (bw - 2) + '" height="' + (ys - yc) + '" rx="2" fill="#6c7c98" opacity=".7"/>';
+      if(x.score > 0) g += '<rect x="' + (i*bw + 1) + '" y="' + ys + '" width="' + (bw - 2) + '" height="' + (H - 14 - ys) + '" rx="2" fill="url(#auG)"/>';
+      const p = zonedParts(new Date(x.t - 1800e3), PLACE.tz);
+      if(p.hour % 3 === 0) g += '<text x="' + (i*bw) + '" y="' + (H - 2) + '" class="gfT" style="text-anchor:start">' + esc(shortTime(p.hour*60)) + '</text>';
+    });
+    const dusk = hs.find(x => x.sun <= -12), set = auMoonSet(Date.now());
+    const notes = [dusk ? "Dark from " + auHrTop(dusk.t) : "", set > 0 ? "moon sets " + auHr(set) : set === -1 ? "moon up all night" : "moon down"].filter(Boolean);
+    h += '<section class="pc"><h3>Tonight hour by hour <span class="tapHint">chance of seeing it</span></h3>' +
+      '<svg viewBox="0 0 ' + W + ' ' + H + '" class="auSvg"><defs><linearGradient id="auG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6ff0b0"/><stop offset="1" stop-color="#2fae7a"/></linearGradient></defs>' + g + '</svg>' +
+      '<div class="auLeg"><span><b style="background:#4fd08f"></b>Good to look</span><span><b style="background:#6c7c98"></b>Clouds in the way</span></div>' +
+      '<div class="sub">' + esc(notes.join(" · ")) + '</div></section>';
+  }
+  /* solar wind */
+  const sw = auSWNow(), m = AU.sw && AU.sw.mag || [];
+  if(sw && m.length){
+    const W = 300, H = 96, t0 = m[0].t, t1 = m[m.length - 1].t, lim = Math.max(10, ...m.map(r => Math.abs(r.bz)));
+    const X = t => (t - t0)/Math.max(1, t1 - t0)*W, Y = v => H/2 - v/lim*(H/2 - 8);
+    const d = m.map((r, i) => (i ? "L" : "M") + X(r.t).toFixed(1) + "," + Y(r.bz).toFixed(1)).join("");
+    const eta = sw.v ? Math.round(1.5e6/sw.v/60) : null;
+    h += '<section class="pc"><h3>Solar wind now' + (eta ? ' <span class="tapHint">reaches Earth in ~' + eta + ' min</span>' : '') + '</h3>' +
+      '<svg viewBox="0 0 ' + W + ' ' + H + '" class="auSvg"><rect x="0" y="' + H/2 + '" width="' + W + '" height="' + H/2 + '" fill="rgba(111,240,176,.07)"/>' +
+      '<line x1="0" y1="' + H/2 + '" x2="' + W + '" y2="' + H/2 + '" stroke="rgba(255,255,255,.25)" stroke-dasharray="3 3"/>' +
+      '<text x="2" y="11" class="gfT" style="text-anchor:start">Bz (nT) · last 2 h</text><text x="2" y="' + (H - 4) + '" class="gfT" style="text-anchor:start;fill:#6ff0b0">south = good</text>' +
+      '<path d="' + d + '" fill="none" stroke="#6ff0b0" stroke-width="1.8"/></svg>' +
+      '<div class="rows auRows"><div><span>Bz</span><b>' + (sw.bz <= 0 ? "−" : "+") + Math.abs(sw.bz).toFixed(0) + ' nT</b> ' + (sw.bz <= 0 ? "south" : "north") + '</div>' +
+      '<div><span>Speed</span><b>' + Math.round(sw.v) + '</b> km/s</div>' +
+      (sw.n != null ? '<div><span>Density</span><b>' + sw.n.toFixed(1) + '</b> /cm³</div>' : '') +
+      '<div><span>Measured</span><b>' + esc(auHr(sw.t)) + '</b> at L1</div></div></section>';
+  } else h += '<section class="pc"><h3>Solar wind now</h3><div class="sub">No reading from the spacecraft right now.</div></section>';
+  /* Kp, next 3 days */
+  if(AUR.kp){
+    const now = Date.now(), need = auNeedKp(), bl = AUR.kp.filter(b => b.t + 3*3600e3 > now && b.t < now + 72*3600e3);
+    if(bl.length){
+      const W = 300, H = 84, bw = W/bl.length;
+      let g = "";
+      bl.forEach((b, i) => {
+        const hh = clamp(b.kp/9, .04, 1)*(H - 18), col = b.kp >= need ? (b.kp >= 6 ? "#f29a3d" : "#f2c46d") : "#5b6d8c";
+        g += '<rect x="' + (i*bw + 1) + '" y="' + (H - 14 - hh) + '" width="' + (bw - 2) + '" height="' + hh + '" rx="2" fill="' + col + '"/>';
+        const p = zonedParts(new Date(b.t), PLACE.tz);
+        if(p.hour < 3 && i) g += '<line x1="' + (i*bw) + '" y1="0" x2="' + (i*bw) + '" y2="' + (H - 12) + '" stroke="rgba(255,255,255,.2)"/>' +
+          '<text x="' + (i*bw + 3) + '" y="' + (H - 2) + '" class="gfT" style="text-anchor:start">' + esc(dayName(p.year + "-" + pad(p.month) + "-" + pad(p.day))) + '</text>';
+      });
+      const ny = H - 14 - need/9*(H - 18);
+      g += '<line x1="0" y1="' + ny + '" x2="' + W + '" y2="' + ny + '" stroke="#78e0f2" stroke-dasharray="4 3" opacity=".8"/>';
+      h += '<section class="pc"><h3>Next 3 days <span class="tapHint">Kp forecast</span></h3><svg viewBox="0 0 ' + W + ' ' + H + '" class="auSvg">' + g + '</svg>' +
+        '<div class="auLeg"><span><b style="background:#f2c46d"></b>Reaches you</span><span><b style="background:#f29a3d"></b>Kp 6+ storm</span><span><b style="background:#5b6d8c"></b>Below your Kp</span>' +
+        '<span><b style="background:none;border-top:2px dashed #78e0f2;height:0;width:12px;border-radius:0"></b>Kp ' + need + ' line</span></div></section>';
+    }
+  }
+  h += '<button class="rdB auGo" id="auGlobeBtn">Where’s the aurora now ›</button>' +
+       '<div class="sub auFine">Chance combines NOAA’s Kp forecast and OVATION model, the live solar wind, darkness, the moon and the cloud forecast. Aurora alerts are coming in Njord Sylv.</div>';
+  el.querySelector(".auBody").innerHTML = h;
+  $("auGlobeBtn").onclick = () => auGlobeOpen();
+}
+
+/* ---- where's the aurora now: globe from above the pole ----
+   Coastlines: Natural Earth 1:110m land (public domain), shipped as land.json.
+   Aurora: NOAA OVATION grid (both hemispheres). Night side from the sun's position. */
+const auGlobeOpenNow = () => { const e = $("auGlobe"); return !!(e && !e.hidden); };
+function auGlobeClose(){ const e = $("auGlobe"); if(e) e.hidden = true; }
+function auGlobeOpen(){
+  let el = $("auGlobe");
+  if(!el){
+    el = document.createElement("div"); el.id = "auGlobe";
+    el.innerHTML = '<div class="gfTop"><button class="rdB" id="auGBack">‹ Aurora now</button><span class="gfTitle auGT"></span></div>' +
+      '<div class="auHemi"><button data-h="n">Northern lights</button><button data-h="s">Southern lights</button></div><div class="auGBody"></div>';
+    document.body.appendChild(el);
+    $("auGBack").onclick = auGlobeClose;
+    el.querySelector(".auHemi").onclick = e => { const b = e.target.closest("[data-h]"); if(b){ AU.hemi = b.dataset.h; auGlobeDraw(); } };
+  }
+  if(!AU.hemi) AU.hemi = PLACE.lat >= 0 ? "n" : "s";
+  el.hidden = false;
+  el.querySelector(".auGBody").innerHTML = '<div class="sub" style="padding:20px">Loading…</div>';
+  const land = AU.land ? Promise.resolve(AU.land) : fetch("land.json").then(r => r.json()).then(j => (AU.land = j));
+  const grid = AU.grid && Date.now() - AU.gridAt < 20*60e3 ? Promise.resolve(AU.grid)
+    : cachedJSON(SWPC + "json/ovation_aurora_latest.json", 20*60e3).then(j => { AU.grid = j; AU.gridAt = Date.now(); return j; });
+  Promise.all([land, grid.catch(() => null)]).then(() => auGlobeDraw()).catch(() => {
+    el.querySelector(".auGBody").innerHTML = '<div class="sub" style="padding:20px">Couldn’t load the map right now.</div>';
+  });
+}
+function auGlobeDraw(){
+  const el = $("auGlobe"); if(!el || !AU.land) return;
+  const south = AU.hemi === "s", R = 165, C = 180, d2 = Math.PI/180;
+  el.querySelectorAll(".auHemi button").forEach(b => b.classList.toggle("on", b.dataset.h === AU.hemi));
+  const here = (PLACE.lat < 0) === south;
+  const lon0 = here ? PLACE.lng : south ? 147 : -95;
+  const proj = (lat, lon) => {
+    if(south){ lat = -lat; lon = -lon; }
+    const l0 = south ? -lon0 : lon0, la = Math.max(lat, 0), r = R*Math.cos(la*d2), a = (lon - l0)*d2;
+    return [C + r*Math.sin(a), C + r*Math.cos(a)];
+  };
+  const P = (lat, lon) => { const q = proj(lat, lon); return q[0].toFixed(1) + "," + q[1].toFixed(1); };
+  /* land */
+  let land = "";
+  for(const ring of AU.land){
+    let mx = -99, mn = 99; for(let i = 1; i < ring.length; i += 2){ if(ring[i] > mx) mx = ring[i]; if(ring[i] < mn) mn = ring[i]; }
+    if((!south && mx < 0) || (south && mn > 0)) continue;
+    let d = ""; for(let i = 0; i < ring.length; i += 2) d += (i ? "L" : "M") + P(ring[i + 1], ring[i]);
+    land += d + "Z";
+  }
+  /* the sun: declination and the longitude where it is overhead */
+  const now = new Date(), ss = sunSky({ lat: 0, lng: 0 }, now), dec = ss.dec;
+  const ut = now.getUTCHours() + now.getUTCMinutes()/60, subLon = -(ut - 12)*15;
+  const sunV = [Math.cos(dec*d2)*Math.cos(subLon*d2), Math.cos(dec*d2)*Math.sin(subLon*d2), Math.sin(dec*d2)];
+  const cosz = (lat, lon) => Math.cos(lat*d2)*Math.cos(lon*d2)*sunV[0] + Math.cos(lat*d2)*Math.sin(lon*d2)*sunV[1] + Math.sin(lat*d2)*sunV[2];
+  const cell = (la, lo, st) => { const s1 = south ? -1 : 1;
+    return "M" + P(s1*la, lo) + "L" + P(s1*la, lo + st) + "L" + P(s1*(la + st), lo + st) + "L" + P(s1*(la + st), lo) + "Z"; };
+  let night = "";
+  for(let la = 0; la < 90; la += 3) for(let lo = -180; lo < 180; lo += 3){
+    if(cosz((south ? -1 : 1)*(la + 1.5), lo + 1.5) < 0) night += cell(la, lo, 3);
+  }
+  /* aurora from OVATION */
+  let aur = { a: "", b: "", c: "" }, here0 = null, best = 0;
+  const g = AU.grid && AU.grid.coordinates;
+  if(Array.isArray(g)){
+    for(const c of g){
+      const v = c[2], lat = c[1]; if(v < 4 || (south ? lat > 0 : lat < 0)) continue;
+      const lon = c[0] > 180 ? c[0] - 360 : c[0];
+      const k = v >= 30 ? "a" : v >= 12 ? "b" : "c";
+      aur[k] += cell(Math.abs(lat) - .5, lon - .5, 1);
+    }
+    if(here){
+      let bd = 1e9;
+      for(const c of g){ const lon = c[0] > 180 ? c[0] - 360 : c[0];
+        if(Math.abs(c[1] - PLACE.lat) > 1 || Math.abs(lon - PLACE.lng) > 1.5) continue;
+        const d = Math.abs(c[1] - PLACE.lat) + Math.abs(lon - PLACE.lng); if(d < bd){ bd = d; here0 = c[2]; } }
+      best = AUR.ov && AUR.ov.best ? AUR.ov.best.prob : 0;
+    }
+  }
+  /* view line: where Kp-now aurora is just seen on the horizon */
+  const kpN = kpAt(Date.now());
+  let vl = "";
+  if(kpN != null){
+    const edge = horizonEdge(kpN), sgn = south ? -1 : 1;
+    const pts = [];
+    for(let lo = -180; lo <= 180; lo += 4){
+      let lo2 = 10, hi = 89;
+      if(Math.abs(magLat(sgn*hi, lo)) < edge || Math.abs(magLat(sgn*lo2, lo)) > edge){ pts.push(null); continue; }
+      for(let it = 0; it < 22; it++){ const mid = (lo2 + hi)/2; if(Math.abs(magLat(sgn*mid, lo)) < edge) lo2 = mid; else hi = mid; }
+      pts.push(P(sgn*lo2, lo));
+    }
+    let up = false; pts.forEach(p => { if(!p){ up = false; return; } vl += (up ? "L" : "M") + p; up = true; });
+  }
+  let pin = "";
+  if(here){ const q = proj(PLACE.lat, PLACE.lng);
+    pin = '<circle cx="' + q[0].toFixed(1) + '" cy="' + q[1].toFixed(1) + '" r="5.5" fill="#fff" stroke="#0b111d" stroke-width="2"/>' +
+          '<text x="' + q[0].toFixed(1) + '" y="' + (q[1] + 19).toFixed(1) + '" class="auPin">' + esc(placeName(PLACE)) + '</text>'; }
+  const hemi = south ? "S" : "N";
+  let rings = ""; for(const la of [30, 50, 70]){ const r = R*Math.cos(la*d2);
+    rings += '<circle cx="' + C + '" cy="' + C + '" r="' + r.toFixed(1) + '"/>'; }
+  const labs = [30, 50, 70].map(la => '<text x="' + (C + 3) + '" y="' + (C - R*Math.cos(la*d2) + 10).toFixed(1) + '">' + la + '°' + hemi + '</text>').join("");
+  const svg = '<svg viewBox="0 0 360 360" class="auGlobeSvg"><defs><clipPath id="auClip"><circle cx="' + C + '" cy="' + C + '" r="' + R + '"/></clipPath>' +
+    '<radialGradient id="auSea" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#1d3556"/><stop offset="100%" stop-color="#132a46"/></radialGradient>' +
+    '<filter id="auSoft" x="-5%" y="-5%" width="110%" height="110%"><feGaussianBlur stdDeviation="2"/></filter></defs>' +
+    '<circle cx="' + C + '" cy="' + C + '" r="' + R + '" fill="url(#auSea)"/><g clip-path="url(#auClip)">' +
+    '<path d="' + land + '" fill="#3a5170" stroke="#5c7698" stroke-width=".5"/>' +
+    '<path d="' + night + '" fill="rgba(4,8,18,.42)" filter="url(#auSoft)"/>' +
+    '<g filter="url(#auSoft)"><path d="' + aur.c + '" fill="#b98cf0" fill-opacity=".35"/><path d="' + aur.b + '" fill="#a7f5c9" fill-opacity=".55"/><path d="' + aur.a + '" fill="#6ff0b0" fill-opacity=".85"/></g>' +
+    '<g fill="none" stroke="rgba(200,220,245,.18)">' + rings + '</g><g class="auLat">' + labs + '</g>' +
+    (vl ? '<path d="' + vl + '" fill="none" stroke="#f2c46d" stroke-width="1.8" stroke-dasharray="5 4"/>' : '') + pin + '</g>' +
+    '<circle cx="' + C + '" cy="' + C + '" r="' + R + '" fill="none" stroke="rgba(160,200,255,.35)" stroke-width="1.5"/></svg>';
+  const t = AU.grid && Date.parse(AU.grid["Forecast Time"] || "");
+  el.querySelector(".auGT").textContent = "NOAA OVATION" + (isFinite(t) ? " · for " + auHr(t) : "");
+  let info;
+  if(!g) info = '<div class="sub">NOAA’s aurora model couldn’t be loaded right now.</div>';
+  else if(here) info = '<h3>From ' + esc(placeName(PLACE)) + '</h3><div class="rows auRows"><div><span>Overhead</span><b>' + (here0 != null ? here0 : 0) + '%</b></div>' +
+    '<div><span>Best in view</span><b>' + best + '%</b></div></div><div class="sub">North of the dashed view line, aurora can be seen low on the horizon.</div>';
+  else info = '<h3>' + (south ? "Southern lights" : "Northern lights") + '</h3><div class="sub">' + (south
+    ? "Aurora australis — best seen from Tasmania, southern New Zealand, Patagonia and Antarctica. Save a place there to get its chance."
+    : "Aurora borealis — best seen from Alaska, Canada, Iceland, Scandinavia and northern Russia.") + '</div>';
+  el.querySelector(".auGBody").innerHTML = '<section class="pc auGlobeCard">' + svg +
+    '<div class="auLeg"><span><b style="background:#6ff0b0"></b>Likely</span><span><b style="background:#b98cf0"></b>Possible</span><span><b style="background:rgba(4,8,18,.7);border:1px solid #445"></b>Night</span>' +
+    (vl ? '<span><b style="background:#f2c46d"></b>View line</span>' : '') + '</div></section><section class="pc">' + info + '</section>';
+}
+
 window.phRedraw = () => { try { render(true); } catch(e){} };
 window.njGraphOpen = () => gfOpen();
 function moonImg(){
@@ -1415,11 +1783,6 @@ function renderSky(){
 }
 /* aurora: a green note at the top of the cards when it is active or expected
    tonight - the same note the desktop shows under the moon */
-function renderAurora(){
-  let n = null;
-  try { n = auroraNote(); } catch(e){}
-  $("phAur").innerHTML = n ? '<section class="pc aurCard ' + n.level + '"><span class="aurDot"></span>' + esc(n.text) + '</section>' : "";
-}
 function renderPlaces(){
   const list = loadPlaces(), h = here();
   /* a saved place that is where you are now folds into the My location chip
@@ -1520,6 +1883,8 @@ top.addEventListener("click", e => {
 
 /* Android back button: close what is open, then scroll the sheet home */
 window.njordBack = function(){
+  if(auGlobeOpenNow()){ auGlobeClose(); return true; }
+  if(auOpenNow()){ auClose(); return true; }
   if(gfOpenNow()){ const el = $("gfFull"); if(el.querySelector(".gfDrawer.open")) el.gfDrawer(false); else gfClose(); return true; }
   if(rdOpenNow()){ if(!$("rdLay").hidden) $("rdLay").hidden = true; else if(!$("rdSet").hidden) $("rdSet").hidden = true; else rdClose(); return true; }
   if(upsellOpen()){ closeUpsell(); return true; }
