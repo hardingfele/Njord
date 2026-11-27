@@ -102,12 +102,15 @@ function nowMin(){ const p = zonedParts(new Date(), PLACE.tz); return p.hour*60 
 function tomorrow(body){
   try { return localEvents(PLACE, new Date(Date.now() + 86400e3), body); } catch(e){ return null; }
 }
-/* lower-left: the sun. By day today's sunrise to sunset, otherwise the next sunrise. */
+/* lower-left: the sun. By day today's sunrise to sunset; for an hour after
+   sunset, when it set; otherwise the next sunrise. */
+const SET_GRACE_MIN = 60;
 function sunText(){
   const ev = SUNEV || {}, m = nowMin();
   if(ev.alwaysUp) return "Midnight sun";
   if(ev.alwaysDown) return "Polar night";
   if(ev.rise != null && ev.set != null && m >= ev.rise && m < ev.set) return hm(ev.rise) + " – " + hm(ev.set);
+  if(ev.set != null && m >= ev.set && m < ev.set + SET_GRACE_MIN) return "Set " + hm(ev.set);
   if(ev.rise != null && m < ev.rise) return "Rises " + hm(ev.rise);
   const t = tomorrow("sun");
   return t && t.rise != null ? "Rises " + hm(t.rise) : (ev.set != null ? "Set " + hm(ev.set) : "");

@@ -229,7 +229,7 @@ html.app #q { padding-right: 46px; }
 html:not(.phone) #phMini { display: none; }
 #phMini .mn { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #phMini .mt { font-weight: 500; font-size: 17px; }
-#phMini img { width: 28px; height: 28px; }
+#phMini img { width: 46px; height: 46px; margin: -10px -6px -10px 0; }   /* build 55: bigger, bar height unchanged */
 
 /* ---- build 8 ------------------------------------------------------------ */
 /* longer place names step down a size instead of being cut off */
@@ -424,6 +424,7 @@ html:not(.phone) #phPlacesH, html:not(.phone) #phPlaces { display: none; }
 #devBox .devH { font: 600 12px/1 Figtree, system-ui, sans-serif; letter-spacing: .08em; text-transform: uppercase; color: #f2c46d; margin-bottom: 8px; }
 #devBox .devRow { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 14.5px; color: #e8eef8; }
 #devBox .devRow input { width: 20px; height: 20px; accent-color: #f2c46d; }
+#devBox .devRow select { font: 500 14px Figtree, system-ui, sans-serif; color: #e8eef8; background: rgba(255,255,255,.06); border: 1px solid rgba(242,196,109,.45); border-radius: 8px; padding: 6px 8px; }
 #devBox .devNote { margin-top: 6px; font-size: 12px; color: #9fb0c8; }
 
 /* app build 49: forecast-source notice under the hero */
@@ -450,6 +451,10 @@ html:not(.phone) #phPlacesH, html:not(.phone) #phPlaces { display: none; }
 .spark { display: block; width: 100%; height: 30px; margin-top: 6px; }
 .sparkDot { position: absolute; width: 0; height: 0; }
 .vbar { position: relative; height: 5px; border-radius: 3px; margin: 12px 0 4px; background: rgba(255,255,255,.08); overflow: hidden; }
+.grid2 .pc.wide { grid-column: 1 / -1; min-height: 0; }
+.pcVis.wide .vrow { display: flex; align-items: center; gap: 14px; }
+.pcVis.wide .vbar { flex: 1 1 auto; margin: 0; }
+.pcVis.wide .sub { margin-top: 6px; }
 .vbar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; background: #90c3f2; }
 #phGraph .gChips { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; margin: 0 -16px 8px; padding: 0 16px; }
 #phGraph .gChips::-webkit-scrollbar { display: none; }
@@ -548,8 +553,10 @@ html.njWeb #gfFull { padding-top: 6px; }
 #gfFull .gfReadWrap { margin-bottom: 10px; }
 
 /* ---- build 54: aurora card, detail page, globe ---- */
-.auCard { background: linear-gradient(135deg, rgba(80,240,170,.14), rgba(120,110,240,.12)); border: 1px solid rgba(110,240,180,.28); cursor: pointer; }
-.auCard.quiet { background: rgba(14,22,38,.62); border-color: rgba(160,190,235,.12); }
+/* build 56: the aurora tint sits on the same dark glass as the other cards,
+   so light text stays readable over a bright daytime sky */
+.auCard { background: linear-gradient(135deg, rgba(80,240,170,.16), rgba(120,110,240,.14)), rgba(11,15,24,.78); border: 1px solid rgba(110,240,180,.28); cursor: pointer; }
+.auCard.quiet { background: rgba(11,15,24,.74); border-color: rgba(160,190,235,.12); }
 .auQuiet { font-size: 15px; color: #e8eef8; margin: 2px 0 4px; }
 .auScore { display: flex; align-items: center; gap: 14px; }
 .auRing { width: 78px; height: 78px; flex: 0 0 78px; }
@@ -588,3 +595,37 @@ html.njWeb #auFull, html.njWeb #auGlobe { padding-top: 6px; }
 #auFull .gfTop .rdB, #auGlobe .gfTop .rdB { white-space: nowrap; flex: 0 0 auto; }
 #auGlobeIn .auGInfo { margin-top: 8px; } #auGlobeIn .auGInfo h3 { margin-top: 6px; }
 #auGlobeIn .auGlobeCard { padding: 0 !important; }
+
+/* ---- build 57: Credits page (opened from Settings) ---- */
+#crFull { position: fixed; inset: 0; z-index: 8500; background: linear-gradient(#152036, #0b111d 70%); color: #e8eef8; overflow-y: auto;
+  font: 400 14px/1.45 Figtree, system-ui, sans-serif; padding: calc(6px + env(safe-area-inset-top)) 12px calc(16px + env(safe-area-inset-bottom)); }
+html.njWeb #crFull { padding-top: 6px; }
+#crFull[hidden] { display: none; }
+#crFull .gfTop { padding: 0 0 8px; }
+#crFull .gfTop .rdB { white-space: nowrap; flex: 0 0 auto; }
+#crFull ul { margin: 0 0 10px; padding-left: 18px; }
+#crFull ul[hidden] { display: none; }
+#crFull li { margin: 0 0 7px; color: rgba(220,230,246,.88); }
+#crFull a { color: #8fd8f0; text-decoration: none; }
+#crFull .crNote { margin: 6px 0 0; font-size: 12px; color: rgba(200,214,236,.65); }
+
+/* ---- build 58: Aviation (Njord Piloten) ---- */
+.avRow { display: flex; gap: 10px; align-items: flex-start; padding: 8px 0; border-top: 1px solid rgba(160,190,235,.1); }
+.avRow:first-of-type { border-top: 0; padding-top: 2px; }
+.avCat { flex: 0 0 44px; text-align: center; border-radius: 6px; padding: 3px 0; font: 700 11px/1.2 Figtree, system-ui, sans-serif; color: #fff; letter-spacing: .04em; margin-top: 1px; }
+.avMain { flex: 1; min-width: 0; }
+.avId { font-size: 14px; color: rgba(226,234,246,.8); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.avId b { color: #fff; font-weight: 700; letter-spacing: .03em; }
+.avDist { float: right; font-size: 12px; color: rgba(170,190,220,.65); margin-left: 8px; }
+.avLine { font-size: 13px; color: rgba(214,226,244,.85); margin-top: 2px; }
+.avAge { font-size: 11px; color: rgba(170,190,220,.55); margin-top: 1px; }
+.avLeg { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 11.5px; color: rgba(200,214,236,.72); margin: 0 4px 10px; }
+.avLeg b { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+#avFull { position: fixed; inset: 0; z-index: 8500; background: linear-gradient(#152036, #0b111d 70%); color: #e8eef8; overflow-y: auto;
+  font: 400 14px/1.4 Figtree, system-ui, sans-serif; padding: calc(6px + env(safe-area-inset-top)) 12px calc(16px + env(safe-area-inset-bottom)); }
+html.njWeb #avFull { padding-top: 6px; }
+#avFull[hidden] { display: none; }
+#avFull .gfTop { padding: 0 0 8px; }
+#avFull .gfTitle { white-space: normal; letter-spacing: .06em; text-transform: none; font-size: 12px; line-height: 1.3; }
+#avFull .pc { margin: 0 0 12px; }
+#avFull .gfTop .rdB { white-space: nowrap; flex: 0 0 auto; }

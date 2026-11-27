@@ -84,6 +84,7 @@
   #credits .cr-by{font-weight:600;color:rgba(214,226,246,.85);margin-bottom:3px}
   #credits a{color:rgba(150,222,240,.85);text-decoration:none}
   #credits a:hover{text-decoration:underline}
+  #credits .crBtn{font:600 12px Figtree,system-ui,sans-serif;color:rgba(150,222,240,.9);background:none;border:0;padding:4px 0;cursor:pointer}
   .seg{display:flex;gap:5px;flex-wrap:wrap}
   .seg button,.chips button{flex:1;padding:6px 8px;border-radius:8px;cursor:pointer;
        background:rgba(255,255,255,.04);border:1px solid rgba(160,190,235,.16);color:#c6d3e8;
@@ -220,46 +221,75 @@
 <!-- Njord Weather app: loading screen (fjord, aurora, longship). phone.js lifts it once the first forecast is in. -->
 <div id="njLoad" style="position:fixed;inset:0;z-index:100;background:#0E1A33;transition:opacity .5s ease">
 <svg viewBox="0 0 108 200" preserveAspectRatio="xMidYMax slice" style="position:absolute;inset:0;width:100%;height:100%">
-<defs><linearGradient id="njSky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0B1630"/><stop offset=".62" stop-color="#2A3560"/><stop offset="1" stop-color="#6B5478"/></linearGradient><linearGradient id="njDawn" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2B4F86"/><stop offset=".55" stop-color="#E39A6B"/><stop offset="1" stop-color="#F4C98A"/></linearGradient></defs>
+<defs><linearGradient id="njSky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0B1630"/><stop offset=".62" stop-color="#2A3560"/><stop offset="1" stop-color="#6B5478"/></linearGradient><linearGradient id="njDawn" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2B4F86"/><stop offset=".55" stop-color="#E39A6B"/><stop offset="1" stop-color="#F4C98A"/></linearGradient><linearGradient id="njFrost" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#D3DAE4"/><stop offset=".6" stop-color="#8C99AD"/><stop offset="1" stop-color="#2E3A4E"/></linearGradient><linearGradient id="njGold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#E6DCC0"/><stop offset=".6" stop-color="#A8935F"/><stop offset="1" stop-color="#4A3E2A"/></linearGradient></defs>
 <rect id="njLsky" width="108" height="200" fill="url(#njSky)"/>
 <g class="njNight">
-<path d="M-4,86 C18,62 40,82 60,66 C76,54 92,60 112,52" stroke="#78F0AA" stroke-opacity=".8" stroke-width="5" fill="none" stroke-linecap="round"/>
-<path d="M-4,96 C20,76 42,92 62,78 C78,68 94,72 112,66" stroke="#78E0F2" stroke-opacity=".3" stroke-width="3" fill="none" stroke-linecap="round"/>
-<circle cx="84" cy="100" r="6.5" fill="#F4F1E6"/>
+<path id="njLaur1" d="M-4,86 C18,62 40,82 60,66 C76,54 92,60 112,52" stroke="#78F0AA" stroke-opacity=".8" stroke-width="5" fill="none" stroke-linecap="round"/>
+<path id="njLaur2" d="M-4,96 C20,76 42,92 62,78 C78,68 94,72 112,66" stroke="#78E0F2" stroke-opacity=".3" stroke-width="3" fill="none" stroke-linecap="round"/>
+<circle id="njLmoon" cx="84" cy="100" r="6.5" fill="#F4F1E6"/>
 <g fill="#fff" fill-opacity=".7"><circle cx="14" cy="40" r=".6"/><circle cx="40" cy="28" r=".5"/><circle cx="70" cy="36" r=".6"/><circle cx="96" cy="80" r=".5"/><circle cx="22" cy="110" r=".5"/></g></g>
 <g class="njDay" style="display:none"><circle cx="80" cy="112" r="8" fill="#FFC35C"/><g fill="#FFF4EA" fill-opacity=".9"><ellipse cx="24" cy="92" rx="12" ry="5"/><ellipse cx="31" cy="89" rx="8" ry="5"/></g></g>
-<path fill="#56658E" d="M0,160 L18,140 L30,148 L48,126 L64,142 L80,128 L108,148 L108,200 L0,200 Z"/>
+<path id="njLfar" fill="#56658E" d="M0,160 L18,140 L30,148 L48,126 L64,142 L80,128 L108,148 L108,200 L0,200 Z"/>
 <path fill="#E6ECF6" d="M48,126 L42,133 L45,132 L48,135 L51,132 L54,133 Z"/>
 <path fill="#E6ECF6" d="M80,128 L75,133 L78,133 L80,136 L83,133 Z"/>
 <path fill="#141B2C" d="M0,176 L22,152 L36,160 L58,138 L78,156 L92,148 L108,158 L108,200 L0,200 Z"/>
 <path d="M0,176 L22,152 L36,160 L58,138 L78,156 L92,148 L108,158" fill="none" stroke="#B9C8E8" stroke-opacity=".7" stroke-width="1" stroke-linejoin="round"/>
 <rect x="0" y="172" width="108" height="28" fill="#0F1A2C"/>
 <g transform="translate(34,150) scale(.42)">
-<line x1="56" y1="34" x2="56" y2="76" stroke="#E9D9B8" stroke-width="2.4"/>
+<line id="njLmast" x1="56" y1="34" x2="56" y2="76" stroke="#E9D9B8" stroke-width="2.4"/>
+<path id="njLpen" d="M56,32.5 L66,35.5 L56,38.5 Z" fill="#D4AF37" style="display:none"/>
 <path id="njLsail" d="M42,38 L72,38 C75,50 75,60 72,68 L42,68 C45,58 45,48 42,38 Z" fill="#C8463C"/>
 <path id="njLseam" d="M42,38 L72,38 C75,50 75,60 72,68 L42,68 C45,58 45,48 42,38 Z M49,38 C52,48.5 52,58.5 49,68 M57,38 C60,49 60,59 57,68 M65,38 C68,49.5 68,59.5 65,68" fill="none" stroke="#F1E6D0" stroke-width="2"/>
-<path d="M56,87.5 C72,87.5 84,82 88,74 C89.6,70.8 90.2,67 89.4,63.4 C89,61.8 86.6,62 86.6,63.6 C86.9,67.6 85.4,72.6 82,76 L30,76 C26.6,72.6 25.1,67.6 25.4,63.6 C25.4,62 23,61.8 22.6,63.4 C21.8,67 22.4,70.8 24,74 C28,82 40,87.5 56,87.5 Z" fill="#E9D9B8"/>
+<path d="M56,87.5 C72,87.5 84,82 88,74 C89.6,70.8 90.2,67 89.4,63.4 C89,61.8 86.6,62 86.6,63.6 C86.9,67.6 85.4,72.6 82,76 L30,76 C26.6,72.6 25.1,67.6 25.4,63.6 C25.4,62 23,61.8 22.6,63.4 C21.8,67 22.4,70.8 24,74 C28,82 40,87.5 56,87.5 Z" id="njLhull" fill="#E9D9B8"/>
 </g>
-<path d="M8,188 C18,185 24,191 34,188 C44,185 50,191 60,188 C70,185 76,191 86,188 C94,186 98,189 102,188" stroke="#7FC8E6" stroke-opacity=".8" stroke-width="1.4" fill="none" stroke-linecap="round"/>
+<path id="njLwave" d="M8,188 C18,185 24,191 34,188 C44,185 50,191 60,188 C70,185 76,191 86,188 C94,186 98,189 102,188" stroke="#7FC8E6" stroke-opacity=".8" stroke-width="1.4" fill="none" stroke-linecap="round"/>
 </svg>
-<div style="position:absolute;left:0;right:0;top:20%;text-align:center;color:#F4F1E6;font:300 40px/1.1 Fraunces,Georgia,serif;letter-spacing:.5px;text-shadow:0 2px 12px rgba(0,0,0,.4)"><span id="njLname">Njord Weather</span>
-<div style="font:500 13px/1.4 Figtree,system-ui,sans-serif;letter-spacing:.18em;text-transform:uppercase;opacity:.7;margin-top:10px">Reading the sky&hellip;</div></div>
+<div id="njLtitle" style="position:absolute;left:0;right:0;top:20%;text-align:center;color:#F4F1E6;font:300 40px/1.1 Fraunces,Georgia,serif;letter-spacing:.5px;text-shadow:0 2px 12px rgba(0,0,0,.4)"><span id="njLname">Njord Weather</span>
+<div style="font:500 13px/1.4 Figtree,system-ui,sans-serif;letter-spacing:.18em;text-transform:uppercase;opacity:.7;margin-top:10px">Reading the sky&hellip;</div>
+<div id="njLpill" style="display:none;margin:20px auto 0;width:max-content;padding:6px 16px 5px;border-radius:999px;background:#0B1630;border:1px solid rgba(244,241,230,.3);color:#fff;font:800 12px/1 Figtree,system-ui,sans-serif;letter-spacing:.16em;text-shadow:none">FREE</div></div>
+<!-- build 57: maker's credit on the dark water at the bottom -->
+<div style="position:absolute;left:0;right:0;bottom:calc(22px + env(safe-area-inset-bottom));text-align:center;color:#F4F1E6;opacity:.6;font:500 11px/1 Figtree,system-ui,sans-serif;letter-spacing:.22em;text-transform:uppercase">by Longship Labs</div>
 </div>
 <script>
-/* Njord Free (app build 39): the loading screen matches the Free icon - dawn
-   sky, low sun, a cloud, a plain sail - and says Njord Free */
+/* Loading screen per tier (app build 57; Free's dawn version from build 39).
+   Gratis: dawn sky, plain sail, "Njord Gratis" with the FREE pill. Sylv: frost-silver sky, white
+   sail, silver hull. Piloten: brushed-gold sky, cream sail, gold seams and a
+   gold pennant. Sylv and Piloten are light at the top, so the title turns dark.
+   ?tier=gratis|sylv|piloten (or the old ?free=1) previews them in a browser. */
 (function(){
-  let free = false;
-  try { free = !!(window.NjordAndroid && NjordAndroid.isFree && NjordAndroid.isFree()); } catch(e){}
-  if(!free && !/[?&]free=1\b/.test(location.search)) return;
-  const L = document.getElementById("njLoad"); if(!L) return;
-  L.style.background = "#2B4F86";
-  document.getElementById("njLsky").setAttribute("fill", "url(#njDawn)");
-  L.querySelector(".njNight").style.display = "none";
-  L.querySelector(".njDay").style.display = "";
-  document.getElementById("njLsail").setAttribute("fill", "#E6DCC4");
-  document.getElementById("njLseam").setAttribute("stroke", "#A89C80");
-  document.getElementById("njLname").textContent = "Njord Free";
+  let tier = "";
+  try { const NA = window.NjordAndroid;
+        if(NA && NA.tier) tier = NA.tier(); else if(NA && NA.isFree && NA.isFree()) tier = "gratis"; } catch(e){}
+  const q = /[?&]tier=(gratis|sylv|piloten)\b/.exec(location.search);
+  if(q) tier = q[1]; else if(/[?&]free=1\b/.test(location.search)) tier = "gratis";
+  const L = document.getElementById("njLoad"); if(!L || !tier) return;
+  const $i = id => document.getElementById(id);
+  const boat = (sail, seam, mast, hull) => {
+    $i("njLsail").setAttribute("fill", sail); $i("njLseam").setAttribute("stroke", seam);
+    $i("njLmast").setAttribute("stroke", mast); $i("njLhull").setAttribute("fill", hull);
+  };
+  if(tier === "gratis"){
+    L.style.background = "#2B4F86";
+    $i("njLsky").setAttribute("fill", "url(#njDawn)");
+    L.querySelector(".njNight").style.display = "none";
+    L.querySelector(".njDay").style.display = "";
+    boat("#E6DCC4", "#A89C80", "#E9D9B8", "#E9D9B8");
+    $i("njLname").textContent = "Njord Gratis";
+    $i("njLpill").style.display = "";          // the icon's FREE pill, under "Reading the sky"
+    return;
+  }
+  const gold = tier === "piloten";
+  L.style.background = gold ? "#E6DCC0" : "#D3DAE4";
+  $i("njLsky").setAttribute("fill", gold ? "url(#njGold)" : "url(#njFrost)");
+  $i("njLaur1").setAttribute("stroke", gold ? "#FFF4D6" : "#FFFFFF"); $i("njLaur1").setAttribute("stroke-opacity", ".45");
+  $i("njLaur2").setAttribute("stroke", gold ? "#FFF8E6" : "#FFFFFF");
+  $i("njLmoon").setAttribute("fill", gold ? "#FFF8E6" : "#FFFFFF");
+  $i("njLfar").setAttribute("fill", gold ? "#6E604A" : "#5D687C");
+  if(gold){ boat("#FFF6DC", "#B8912E", "#E9D9B8", "#E9D9B8"); $i("njLpen").style.display = ""; $i("njLwave").setAttribute("stroke", "#E6C866"); }
+  else boat("#EEF1F5", "#7F8A9C", "#C9D0DA", "#C9D0DA");
+  const T = $i("njLtitle");
+  T.style.color = gold ? "#2B2110" : "#1E2836"; T.style.textShadow = "none";
+  $i("njLname").textContent = gold ? "Njord Piloten" : "Njord Sylv";
 })();
 </script>
 <canvas id="sky"></canvas>
@@ -303,6 +333,8 @@
       <button data-show="showGraph">Hourly graph</button>
       <button data-show="cardPress">Pressure</button>
       <button data-show="cardVis">Visibility</button>
+      <button data-show="cardUV">UV index</button>
+      <button data-show="cardTide">Tides</button>
     </div>
     <h4>Advanced</h4>
     <div id="testRow">
@@ -312,17 +344,30 @@
     <h4>About</h4>
     <div id="credits">
       <div id="appVer" class="cr-by" hidden></div>
-      <div class="cr-by" style="margin-bottom:4px">&copy; 2026 Aaran. All rights reserved.</div>
-      <span class="cr-full">Weather, geocoding, elevation and satellite data by <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo.com</a> (CC BY 4.0).
-      Terrain from Copernicus DEM GLO-90; ground type from Copernicus Climate Change Service / ERA5 information.
-      US alerts from the National Weather Service; aurora data from NOAA SWPC.</span>
-      <span class="cr-free" hidden>Forecasts and alerts from the National Weather Service; aurora data from NOAA SWPC.
-      Places and population from the U.S. Census Bureau.
-      Terrain: United States 3DEP (formerly NED) and global GMTED2010 and SRTM terrain data courtesy of the U.S. Geological Survey,
-      via Mapzen Terrain Tiles on AWS.</span>
-      Flags by <a href="https://flagpedia.net/" target="_blank" rel="noopener">Flagpedia.net</a>.
-      Holidays from <a href="https://date.nager.at/" target="_blank" rel="noopener">Nager.Date</a>.
-      Not affiliated with or endorsed by NOAA or the National Weather Service. Forecasts are for general interest only.
+      <div class="cr-by" style="margin-bottom:6px">&copy; 2026 Longship Labs LLC. All rights reserved.</div>
+      <!-- build 57: the source list lives on its own Credits page (phone.js crOpen) -->
+      <button id="crBtn" class="crBtn">Credits &rsaquo;</button>
+      <div id="crList" hidden>
+        <ul class="cr-full">
+          <li>Weather, place search, elevation and satellite data: <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo.com</a> (CC BY 4.0)</li>
+          <li>Terrain: Copernicus DEM GLO-90. Ground type: Copernicus Climate Change Service / ERA5</li>
+          <li>US forecasts and alerts: NOAA National Weather Service</li>
+        </ul>
+        <ul class="cr-free" hidden>
+          <li>Forecasts and alerts: NOAA National Weather Service</li>
+          <li>Places and population: U.S. Census Bureau</li>
+          <li>Terrain: USGS 3DEP (formerly NED), GMTED2010 and SRTM, courtesy of the U.S. Geological Survey, via Mapzen Terrain Tiles on AWS</li>
+        </ul>
+        <ul>
+          <li>Aurora and solar wind: NOAA Space Weather Prediction Center</li>
+          <li>UV index: U.S. EPA and National Weather Service. Tides: NOAA CO-OPS</li>
+          <li>Radar map: <a href="https://openfreemap.org/" target="_blank" rel="noopener">OpenFreeMap</a>, &copy; <a href="https://openmaptiles.org/" target="_blank" rel="noopener">OpenMapTiles</a>, data &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a>; drawn with MapLibre GL JS (BSD-3-Clause)</li>
+          <li>Town names: <a href="https://www.bigdatacloud.com/" target="_blank" rel="noopener">BigDataCloud</a></li>
+          <li>Flags: <a href="https://flagpedia.net/" target="_blank" rel="noopener">Flagpedia.net</a>. Holidays: <a href="https://date.nager.at/" target="_blank" rel="noopener">Nager.Date</a></li>
+          <li>Fonts: Figtree and Fraunces (SIL Open Font License)</li>
+        </ul>
+        <p class="crNote">Not affiliated with or endorsed by NOAA or the National Weather Service. Forecasts are for general interest only.</p>
+      </div>
     </div>
   </div>
   <div id="hint">Enter to choose, Esc to close</div>
@@ -664,7 +709,7 @@ const CONFIG = {
   debugTime  : true,
   testMode   : false,        // test rig + debug keys; toggled from the settings gear
   showLandmarks: true,
-  showGraph: true, cardPress: true, cardVis: true,   // build 52: phone cards       // famous structures near the place (Eiffel Tower, Opera House ...)
+  showGraph: true, cardPress: true, cardVis: true, cardUV: true, cardTide: true,   // build 52: phone cards       // famous structures near the place (Eiffel Tower, Opera House ...)
   showAurora : true,         // aurora curtains, note under the moon, storm (!) on day list
   rainOnGlass: true,         // drops landing and running down the "window" in rain
   maxFPS     : 30,           // ceiling; the loop idles far below this
@@ -697,7 +742,7 @@ const STORE = {
 /* Settings chosen in the gear panel persist across sessions. */
 const SETTING_KEYS = ["units","windMS","clock24","showHourly","showCards","showMoon","showSunArc",
                       "showTurbines","showFlag","flagDesign","flagLight","testMode","showAurora","showLandmarks","rainOnGlass",
-                      "showGraph","cardPress","cardVis"];
+                      "showGraph","cardPress","cardVis","cardUV","cardTide"];
 (function restoreSettings(){
   try {
     const j = JSON.parse(STORE.get("weather.settings") || "null");
@@ -1032,6 +1077,20 @@ let WX_SRC = "om", WX_SRC_AT = 0;
 /* Njord Free (app build 48) runs on NOAA alone: no Open-Meteo forecast */
 const NJ_FREE = (() => { try { return !!(window.NjordAndroid && NjordAndroid.isFree && NjordAndroid.isFree()); }
                          catch(e){ return false; } })() || /[?&]free=1\b/.test(location.search);
+/* build 57: Credits page. The list sits hidden in Settings (so Free's own
+   source list is switched just below) and is copied into a full-screen page. */
+function crOpen(){
+  let el = document.getElementById("crFull");
+  if(!el){
+    el = document.createElement("div"); el.id = "crFull";
+    el.innerHTML = '<div class="gfTop"><button class="rdB" id="crBack">\u2039 Settings</button><span class="gfTitle">Credits</span></div><section class="pc crBody"></section>';
+    document.body.appendChild(el);
+    document.getElementById("crBack").onclick = () => { el.hidden = true; };
+  }
+  el.querySelector(".crBody").innerHTML = document.getElementById("crList").innerHTML;
+  el.hidden = false;
+}
+try { document.getElementById("crBtn").onclick = crOpen; } catch(e){}
 if(NJ_FREE) try {             // Free's About credits name the sources it actually uses
   document.querySelectorAll("#credits .cr-full").forEach(e => e.hidden = true);
   document.querySelectorAll("#credits .cr-free").forEach(e => e.hidden = false);

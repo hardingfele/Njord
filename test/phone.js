@@ -52,7 +52,7 @@ const deg = "&deg;";
 const ph = document.createElement("div"); ph.id = "ph";
 ph.innerHTML =
   '<div id="phTop"><div id="phHero"></div></div>' +
-  '<div id="phSheet"><div class="grab"></div><div id="phAur"></div>' +
+  '<div id="phSheet"><div class="grab"></div><div id="phAur"></div><div id="phAvi"></div>' +
     '<section class="pc" id="phHourly"><h3>Next 24 hours <a class="jump" id="phJump">' + (FREE ? '7-day' : '10-day') + ' &rsaquo;</a></h3><div class="sum24"></div><div class="hrs"></div></section>' +
     '<section class="pc" id="phRadar" hidden><h3>Radar <a class="jump" id="phRadarJump">Full map &rsaquo;</a></h3>' +
       '<div class="rdMap" id="phRadarMap"><div class="rdGL"></div><span class="rdTime"></span></div><div class="rdNote" hidden></div></section>' +
@@ -150,8 +150,9 @@ function render(force){
   /* sun/moon arcs and the aurora note move on their own, slower clock */
   const ss = [PLACE.lat, PLACE.lng, p.hour, Math.floor(p.minute/10), CONFIG.clock, typeof AUR === "object" && AUR ? AUR.kpAt + "/" + AUR.ovAt : ""].join("|");
   if(WX && (force || ss !== skySig)){ skySig = ss; renderSky(); renderAurora(); }
+  try { renderAviation(); } catch(e){}
   const ds = [PLACE.lat, PLACE.lng, p.hour, wxGen, CONFIG.units, CONFIG.clock, loadPlaces().length, STORE.get("weather.home") || "",
-              CONFIG.showGraph, CONFIG.cardPress, CONFIG.cardVis, OBS_PV ? OBS_PV.t : 0,
+              CONFIG.showGraph, CONFIG.cardPress, CONFIG.cardVis, OBS_PV ? OBS_PV.t : 0, CONFIG.cardUV, CONFIG.cardTide,
               SCENE ? Math.round(SCENE.phase.illum*100) : -1].join("|");
   if(!force && ds === dataSig) return;
   dataSig = ds;
@@ -882,6 +883,11 @@ function renderDetails(){
     const amt = d0.amt != null && d0.amt > 0 ? (CONFIG.units === "imperial" ? d0.amt.toFixed(2) + " in" : d0.amt.toFixed(1) + " mm") + " expected" : "None expected";
     html.push(card("Precipitation", (d0.pop != null ? Math.round(d0.pop) : 0) + "%", "Chance today<br>" + amt));
   }
+  /* build 57: UV (EPA) and tides (NOAA CO-OPS) sit before
+     pressure and visibility so Visibility's wide-last-row rule still holds; each loads on its own and
+     stays hidden until it has data or when the service can't be reached */
+  if(CONFIG.cardUV){ loadUV(); const c = uvCard(); if(c) html.push(c); }
+  if(CONFIG.cardTide){ loadTide(); const c = tideCard(); if(c) html.push(c); }
   /* build 52: pressure and visibility, from the nearest station's latest report */
   const pv = OBS_PV, metric = CONFIG.units !== "imperial";
   if(CONFIG.cardPress && pv && pv.hpa != null){
@@ -903,9 +909,13 @@ function renderDetails(){
                      : (mi >= 9.5 ? "10+" : mi >= 3 ? Math.round(mi) : (Math.round(mi*4)/4).toString()) + ' <small>mi</small>';
     const frac = Math.max(0.03, Math.min(1, mi/10));
     const tt = zonedParts(new Date(pv.t), PLACE.tz);
-    html.push('<section class="pc"><h3>Visibility</h3><div class="big">' + v + '</div>' +
-              '<div class="vbar"><i style="width:' + Math.round(frac*100) + '%"></i></div>' +
-              '<div class="sub">' + (pv.text ? esc(pv.text) + "<br>" : "") + 'Measured ' + esc(shortTime(tt.hour*60 + tt.minute)) +
+    /* build 55: when it would sit alone on the last row it spans both
+       columns, with the reading and bar on one line and the note under it */
+    const wide = html.length % 2 === 0;
+    html.push('<section class="pc pcVis' + (wide ? ' wide' : '') + '"><h3>Visibility</h3>' +
+              '<div class="vrow"><div class="big">' + v + '</div>' +
+              '<div class="vbar"><i style="width:' + Math.round(frac*100) + '%"></i></div></div>' +
+              '<div class="sub">' + (pv.text ? esc(pv.text) + (wide ? " &middot; " : "<br>") : "") + 'Measured ' + esc(shortTime(tt.hour*60 + tt.minute)) +
               ' at ' + esc(pv.name || pv.id) + '</div></section>');
   }
   $("phDetails").innerHTML = html.join("");
@@ -920,6 +930,118 @@ function pressSpark(h){
   return '<svg class="spark" viewBox="0 0 100 30" preserveAspectRatio="none"><polyline points="' + pts.map(p => p[0].toFixed(1) + "," + p[1].toFixed(1)).join(" ") +
          '" fill="none" stroke="#90c3f2" stroke-width="2" vector-effect="non-scaling-stroke"/>' +
          '<circle cx="' + last[0].toFixed(1) + '" cy="' + last[1].toFixed(1) + '" r="2.6" fill="#fbfcfe"/></svg>';
+}
+
+/* ---- UV and tides (app build 57) ------------------------------------------
+   UV      EPA Envirofacts hourly UV Index forecast (with NWS), US only. Looked
+           up by ZIP, or by city and state when the ZIP isn't known; both come
+           from the reverse geocoder the app already uses.
+   Tides   NOAA CO-OPS high/low predictions from the nearest prediction station
+           within 40 km. The station list ships in the app (tide-stations.json,
+           built in CI by tools/build_tide_stations.py). Times come back in the
+           station's local time, which is the place's time zone this close. */
+const EXT = { gen: 0, uv: null, uvKey: "", tide: null, tideKey: "" };
+let TIDE_ST = null;
+/* only the detail cards redraw when UV or tides arrive, so the hourly strip keeps its scroll */
+function extDone(){ EXT.gen++; try { if(WX && isPhone()) renderDetails(); } catch(e){} }
+function kmTo(lat1, lng1, lat2, lng2){
+  const r = Math.PI/180, a = Math.sin((lat2 - lat1)*r/2)**2 +
+            Math.cos(lat1*r)*Math.cos(lat2*r)*Math.sin((lng2 - lng1)*r/2)**2;
+  return 12742*Math.asin(Math.sqrt(a));
+}
+const p2 = n => String(n).padStart(2, "0");
+function placeYMD(){ const t = zonedParts(new Date(), PLACE.tz); return { t, ymd: t.year + p2(t.month) + p2(t.day),
+                     stamp: t.year + "-" + p2(t.month) + "-" + p2(t.day) + " " + p2(t.hour) + ":" + p2(t.minute) }; }
+
+function loadUV(){
+  const k = placeKey() + "@" + placeYMD().ymd;
+  if(EXT.uvKey === k) return;
+  EXT.uvKey = k; EXT.uv = null;
+  if(PLACE.cc && PLACE.cc !== "US") return;
+  const lat = PLACE.lat.toFixed(4), lng = PLACE.lng.toFixed(4);
+  cachedJSON("https://api.bigdatacloud.net/data/reverse-geocode-client?localityLanguage=en&latitude=" + lat + "&longitude=" + lng, 24*3600e3)
+    .then(g => {
+      if(!g || g.countryCode !== "US") return null;
+      const zip = /^\d{5}/.test(g.postcode || "") ? g.postcode.slice(0, 5) : "";
+      const st = g.principalSubdivisionCode ? g.principalSubdivisionCode.split("-").pop() : "";
+      const city = g.city || g.locality || "";
+      const base = "https://data.epa.gov/efservice/getEnvirofactsUVHOURLY/";
+      const byCity = city && st ? base + "CITY/" + encodeURIComponent(city) + "/STATE/" + st + "/JSON" : "";
+      const get = u => cachedJSON(u, 3*3600e3).then(rows => Array.isArray(rows) && rows.length ? rows : Promise.reject("no rows"));
+      return (zip ? get(base + "ZIP/" + zip + "/JSON") : Promise.reject("no zip"))
+        .catch(() => byCity ? get(byCity) : null);
+    })
+    .then(rows => {
+      if(EXT.uvKey !== k || !rows) return;
+      const M = { JAN:1, FEB:2, MAR:3, APR:4, MAY:5, JUN:6, JUL:7, AUG:8, SEP:9, OCT:10, NOV:11, DEC:12 };
+      const hrs = [];
+      rows.forEach(r => {
+        const o = {}; Object.keys(r).forEach(x => o[x.toLowerCase()] = r[x]);
+        const m = /([A-Za-z]{3})\/(\d{1,2})\/(\d{4})\s+(\d{1,2})\s*(AM|PM)/i.exec(o.date_time || "");
+        const v = parseFloat(o.uv_value);
+        if(!m || !isFinite(v)) return;
+        let h = +m[4] % 12; if(m[5].toUpperCase() === "PM") h += 12;
+        hrs.push({ ymd: m[3] + p2(M[m[1].toUpperCase()] || 0) + p2(+m[2]), h, v });
+      });
+      if(hrs.length){ EXT.uv = hrs; extDone(); }
+    })
+    .catch(() => {});
+}
+function uvCard(){
+  const hrs = EXT.uv; if(!hrs) return "";
+  const { t, ymd } = placeYMD();
+  const today = hrs.filter(x => x.ymd === ymd);
+  if(!today.length) return "";
+  const cat = v => v < 3 ? "Low" : v < 6 ? "Moderate" : v < 8 ? "High" : v < 11 ? "Very high" : "Extreme";
+  const nowH = today.find(x => x.h === t.hour);
+  const now = nowH ? nowH.v : 0;
+  const peak = today.reduce((a, b) => b.v > a.v ? b : a);
+  const after = t.hour > peak.h;
+  const sub = peak.v < 1 ? "Low all day" :
+              (after ? "Peaked at " : "Peak ") + Math.round(peak.v) + " (" + cat(peak.v).toLowerCase() + ") around " + esc(shortTime(peak.h*60)) +
+              (peak.v >= 3 && !after ? "<br>Sun protection advised" : "");
+  return '<section class="pc"><h3>UV index</h3><div class="big">' + Math.round(now) + ' <small>' + cat(now) + '</small></div>' +
+         '<div class="sub">' + sub + '</div></section>';
+}
+
+function loadTide(){
+  const k = placeKey() + "@" + placeYMD().ymd;
+  if(EXT.tideKey === k) return;
+  EXT.tideKey = k; EXT.tide = null;
+  if(!TIDE_ST) TIDE_ST = fetch("tide-stations.json").then(r => r.ok ? r.json() : []).catch(() => { TIDE_ST = null; return []; });
+  TIDE_ST.then(list => {
+    let best = null, bd = 40;
+    for(const s of list){ if(Math.abs(s[3] - PLACE.lat) > 0.5) continue;
+      const d = kmTo(PLACE.lat, PLACE.lng, s[3], s[4]); if(d < bd){ bd = d; best = s; } }
+    if(!best) return null;
+    /* start yesterday so the tide just before midnight is known; 72 hours covers tomorrow */
+    const y = new Date(Date.now() - 864e5), yp = zonedParts(y, PLACE.tz);
+    const begin = yp.year + p2(yp.month) + p2(yp.day);
+    return cachedJSON("https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?product=predictions&application=NjordWeather" +
+                      "&begin_date=" + begin + "&range=72&datum=MLLW&station=" + best[0] +
+                      "&time_zone=lst_ldt&units=english&interval=hilo&format=json", 6*3600e3)
+      .then(j => ({ st: best, km: bd, p: (j && j.predictions) || [] }));
+  }).then(r => {
+    if(EXT.tideKey !== k || !r || !r.p.length) return;
+    EXT.tide = r; extDone();
+  }).catch(() => {});
+}
+function tideCard(){
+  const T = EXT.tide; if(!T) return "";
+  const { stamp } = placeYMD();
+  const ev = T.p.map(x => ({ t: x.t, v: parseFloat(x.v), hi: x.type === "H" })).filter(x => isFinite(x.v));
+  const i = ev.findIndex(x => x.t > stamp);
+  if(i < 0) return "";
+  const metric = CONFIG.units !== "imperial";
+  const ht = v => metric ? (v*0.3048).toFixed(1) + " m" : v.toFixed(1) + " ft";
+  const when = x => { const today = x.t.slice(0, 10) === stamp.slice(0, 10);
+    return esc(shortTime(+x.t.slice(11, 13)*60 + +x.t.slice(14, 16))) + (today ? "" : " tomorrow"); };
+  const nx = ev[i], then = ev[i + 1], prev = ev[i - 1];
+  const dir = prev ? (nx.hi ? "Rising" : "Falling") + " now" : "";
+  return '<section class="pc"><h3>Tides</h3><div class="big">' + (nx.hi ? "High" : "Low") + ' <small>' + when(nx) + '</small></div>' +
+         '<div class="sub">' + (dir ? dir + ", to " + ht(nx.v) : ht(nx.v)) +
+         (then ? "<br>" + (then.hi ? "High " : "Low ") + ht(then.v) + " at " + when(then) : "") +
+         '<br>' + esc(T.st[1]) + (T.km >= 2 ? ", " + Math.round(metric ? T.km : T.km/1.609) + (metric ? " km" : " mi") + " away" : "") + '</div></section>';
 }
 
 /* ---- hourly graph (app build 52) -------------------------------------------
@@ -1772,6 +1894,109 @@ function renderSky(){
   }
   $("phSky").innerHTML = html;
 }
+/* ==== AVIATION (Njord Piloten, app build 58) ==================================
+   Nearest airports with their flight category, from aviationweather.gov
+   METARs through the Njord relay (aviationweather.gov blocks browser calls
+   and limits requests, so the relay caches them for everyone nearby).
+   For planning, not navigation. Shown only when the tier is Piloten
+   (?tier=piloten previews it in a browser). */
+const RELAY = "https://njord-met.aaran-74b.workers.dev";
+const PILOTEN = (() => { try { const NA = window.NjordAndroid; if(NA && NA.tier && NA.tier() === "piloten") return true; } catch(e){}
+  return /[?&]tier=piloten\b/.test(location.search); })();
+root.classList.toggle("njPiloten", PILOTEN);
+const AV = { key: "", at: 0, busy: false, list: null, err: "" };
+const AV_CAT = { VFR: "#3fbf5f", MVFR: "#4a8cff", IFR: "#e0453a", LIFR: "#d23fd2" };
+const avNM = km => km / 1.852;
+function avLoad(force){
+  if(!PILOTEN || !PLACE || AV.busy) return;
+  const key = PLACE.lat.toFixed(2) + "," + PLACE.lng.toFixed(2);
+  if(!force && key === AV.key && Date.now() - AV.at < 5*60e3) return;
+  AV.busy = true;
+  const lat = PLACE.lat, lng = PLACE.lng;
+  cachedJSON(RELAY + "/metar?lat=" + lat.toFixed(2) + "&lon=" + lng.toFixed(2), force ? 0 : 3*60e3)
+    .then(j => {
+      AV.list = (Array.isArray(j) ? j : []).filter(m => m && m.icaoId && isFinite(m.lat) && isFinite(m.lon))
+        .map(m => Object.assign({}, m, { km: kmBetween(lat, lng, m.lat, m.lon) }))
+        .sort((a, b) => a.km - b.km);
+      AV.err = "";
+    })
+    .catch(() => { AV.err = "Airport weather couldn’t be loaded right now."; })
+    .finally(() => { AV.key = key; AV.at = Date.now(); AV.busy = false; renderAviation(); if(avOpenNow()) avDraw(); });
+}
+/* lowest broken/overcast layer (or vertical visibility), in feet */
+function avCeiling(m){
+  /* vertical visibility: treated as feet, or hundreds of feet if it's a small number (unit not confirmed yet) */
+  if(m.vertVis != null && isFinite(m.vertVis) && +m.vertVis > 0) return { ft: +m.vertVis < 100 ? +m.vertVis*100 : +m.vertVis, vv: true };
+  const c = (m.clouds || []).filter(x => /^(BKN|OVC|OVX)$/.test(x.cover) && x.base != null).sort((a, b) => a.base - b.base)[0];
+  return c ? { ft: c.base, cover: c.cover } : null;
+}
+function avWind(m){
+  const s = +m.wspd || 0;
+  if(!s) return "Calm";
+  const d = m.wdir === "VRB" || m.wdir == null ? "Variable" : pad3(m.wdir) + "°";
+  return d + " " + s + (m.wgst ? "G" + m.wgst : "") + " kt";
+}
+const pad3 = n => String(Math.round(+n) % 360 || 360).padStart(3, "0");
+function avVis(m){
+  const v = m.visib;
+  if(v == null || v === "") return "";
+  return (String(v).replace("+", "") === "10" || /\+$/.test(String(v)) ? "10+" : String(v)) + " SM";
+}
+function avSky(m){
+  const c = avCeiling(m);
+  if(c) return (c.vv ? "Sky obscured " : c.cover === "BKN" ? "Broken " : "Overcast ") + Number(c.ft).toLocaleString("en-US") + " ft";
+  const top = (m.clouds || []).filter(x => x.base != null).sort((a, b) => a.base - b.base)[0];
+  if(top) return (top.cover === "FEW" ? "Few " : "Scattered ") + Number(top.base).toLocaleString("en-US") + " ft";
+  return m.cover === "CLR" || m.cover === "SKC" || m.cover === "CAVOK" ? "Clear" : "";
+}
+function avLine(m){ return [avWind(m), avVis(m), avSky(m), m.wxString || ""].filter(Boolean).join(" · "); }
+function avAge(m){
+  const t = (m.obsTime || 0)*1000; if(!t) return "";
+  const min = Math.round((Date.now() - t)/60e3);
+  return min < 1 ? "now" : min < 60 ? min + " min ago" : Math.floor(min/60) + " h " + (min % 60) + " min ago";
+}
+function avRow(m, age){
+  const cat = m.fltCat || "", col = AV_CAT[cat] || "#7d8aa3";
+  return '<div class="avRow"><span class="avCat" style="background:' + col + '">' + esc(cat || "—") + '</span>' +
+    '<div class="avMain"><div class="avId"><b>' + esc(m.icaoId) + '</b> ' + esc(String(m.name || "").replace(/, [A-Z]{2}, [A-Z]{2}$/, "")) +
+    '<span class="avDist">' + Math.round(avNM(m.km)) + ' NM</span></div>' +
+    '<div class="avLine">' + esc(avLine(m)) + '</div>' + (age ? '<div class="avAge">' + esc(avAge(m)) + '</div>' : '') + '</div></div>';
+}
+function renderAviation(){
+  const el = $("phAvi"); if(!el) return;
+  if(!PILOTEN){ el.innerHTML = ""; return; }
+  avLoad(false);
+  let body;
+  if(AV.list && AV.list.length) body = AV.list.slice(0, 3).map(m => avRow(m)).join("");
+  else if(AV.list) body = '<div class="sub">No airport reports within about 100 km.</div>';
+  else body = '<div class="sub">' + esc(AV.err || "Loading airport weather…") + '</div>';
+  el.innerHTML = '<section class="pc avCard"><h3>Aviation <span class="tapHint">airports ›</span></h3>' + body + '</section>';
+  el.firstChild.onclick = () => avOpen();
+}
+/* ---- Aviation page ---- */
+const avOpenNow = () => { const e = $("avFull"); return !!(e && !e.hidden); };
+function avOpen(){
+  let el = $("avFull");
+  if(!el){
+    el = document.createElement("div"); el.id = "avFull";
+    el.innerHTML = '<div class="gfTop"><button class="rdB" id="avBack">‹ Aviation</button><span class="gfTitle avSub"></span></div><div class="avBody"></div>';
+    document.body.appendChild(el);
+    $("avBack").onclick = avClose;
+  }
+  el.hidden = false; avLoad(false); avDraw();
+}
+function avClose(){ const e = $("avFull"); if(e) e.hidden = true; }
+function avDraw(){
+  const el = $("avFull"); if(!el) return;
+  el.querySelector(".avSub").textContent = "Nearest airports to " + placeName(PLACE);
+  let h;
+  if(AV.list && AV.list.length){
+    h = '<section class="pc">' + AV.list.slice(0, 20).map(m => avRow(m, true)).join("") + '</section>';
+    h += '<div class="avLeg">' + Object.keys(AV_CAT).map(k => '<span><b style="background:' + AV_CAT[k] + '"></b>' + k + '</span>').join("") + '</div>';
+  } else h = '<section class="pc"><div class="sub">' + esc(AV.list ? "No airport reports within about 100 km." : AV.err || "Loading airport weather…") + '</div></section>';
+  h += '<div class="sub auFine">Reports from aviationweather.gov (NOAA). Distances in nautical miles. For planning only — not for navigation.</div>';
+  el.querySelector(".avBody").innerHTML = h;
+}
 /* aurora: a green note at the top of the cards when it is active or expected
    tonight - the same note the desktop shows under the moon */
 function renderPlaces(){
@@ -1874,6 +2099,7 @@ top.addEventListener("click", e => {
 
 /* Android back button: close what is open, then scroll the sheet home */
 window.njordBack = function(){
+  if(avOpenNow()){ avClose(); return true; }
   if(auOpenNow()){ auClose(); return true; }
   if(gfOpenNow()){ const el = $("gfFull"); if(el.querySelector(".gfDrawer.open")) el.gfDrawer(false); else gfClose(); return true; }
   if(rdOpenNow()){ if(!$("rdLay").hidden) $("rdLay").hidden = true; else if(!$("rdSet").hidden) $("rdSet").hidden = true; else rdClose(); return true; }
@@ -2643,15 +2869,21 @@ setInterval(() => render(false), 1000);
   const njNote = window.njNote || (() => {});
   const box = document.createElement("div");
   box.id = "devBox";
-  box.innerHTML = '<div class="devH">Developer</div>' +
-    '<label class="devRow"><span>Run as Njord Free</span><input type="checkbox" id="devFree"></label>' +
-    '<div class="devNote">Restarts the app. Widgets follow on their next update.</div>';
+  /* app build 57: pick a tier (Gratis / Sylv / Piloten) when the app knows tiers;
+     the launcher icon and loading screen switch with it */
+  let TIER = ""; try { TIER = NA.tier ? NA.tier() : ""; } catch(e){}
+  box.innerHTML = '<div class="devH">Developer</div>' + (TIER
+    ? '<label class="devRow"><span>Run as</span><select id="devTier"><option value="gratis">Njord Gratis (Free)</option>' +
+      '<option value="sylv">Njord Sylv</option><option value="piloten">Njord Piloten</option></select></label>'
+    : '<label class="devRow"><span>Run as Njord Free</span><input type="checkbox" id="devFree"></label>') +
+    '<div class="devNote">Restarts the app' + (TIER ? ' and changes the app icon (the home screen can take a few seconds)' : '') +
+    '. Widgets follow on their next update.</div>';
   const shown = (() => { try { return localStorage.getItem("njDev") === "1"; } catch(e){ return false; } })();
   box.hidden = !shown && !FREE;
   el.parentNode.insertBefore(box, el.nextSibling);
-  const cb = box.querySelector("#devFree");
-  cb.checked = FREE;
-  cb.addEventListener("change", () => { try { NA.setDevFree(cb.checked); } catch(e){} });
+  const cb = box.querySelector("#devFree"), sel = box.querySelector("#devTier");
+  if(cb){ cb.checked = FREE; cb.addEventListener("change", () => { try { NA.setDevFree(cb.checked); } catch(e){} }); }
+  if(sel){ sel.value = TIER; sel.addEventListener("change", () => { try { NA.setDevTier(sel.value); } catch(e){} }); }
   let taps = 0, tT = 0;
   el.addEventListener("click", () => {
     clearTimeout(tT); tT = setTimeout(() => taps = 0, 1500);
