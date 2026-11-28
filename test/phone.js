@@ -2059,11 +2059,19 @@ function catOf(ceilFt, visSM){
   return "VFR";
 }
 const visNum = v => v == null || v === "" ? null : /\+$/.test(String(v)) ? parseFloat(v) + 0.01 : +v;
-const visTxt = v => v == null || v === "" ? "" : String(v).replace(/^(\d+)\+$/, "$1+") + " SM";
+/* 0.5 -> "1/2 SM", 1.25 -> "1 1/4 SM", "6+" -> "6+ SM" */
+function visTxt(v){
+  if(v == null || v === "") return "";
+  if(/\+$/.test(String(v))) return String(v) + " SM";
+  const n = +v; if(!isFinite(n)) return String(v) + " SM";
+  const w = Math.floor(n), fr = Math.round((n - w)*8)/8;
+  const F = { 0.125: "1/8", 0.25: "1/4", 0.375: "3/8", 0.5: "1/2", 0.625: "5/8", 0.75: "3/4", 0.875: "7/8" }[fr];
+  return (F ? (w ? w + " " : "") + F : String(Math.round(n*100)/100)) + " SM";
+}
 function cloudsTxt(cl, vv){
   if(vv) return "Sky obscured, vertical visibility " + Number(vv).toLocaleString("en-US") + " ft";
   const W = { FEW: "Few", SCT: "Scattered", BKN: "Broken", OVC: "Overcast", OVX: "Obscured" };
-  const l = (cl || []).filter(c => c.base != null).map(c => (W[c.cover] || c.cover) + " " + Number(c.base).toLocaleString("en-US") + " ft" + (c.type ? " " + c.type : ""));
+  const l = (cl || []).filter(c => c.base != null).map(c => (W[c.cover] || c.cover) + " " + Number(c.base).toLocaleString("en-US") + " ft" + (c.type === "CB" ? " (cumulonimbus)" : c.type === "TCU" ? " (towering cumulus)" : c.type ? " " + c.type : ""));
   return l.join(", ");
 }
 const tLocal = ms => fmtMs(ms);
@@ -2105,7 +2113,7 @@ function periodWords(p){
   if(p.f.wspd != null || p.kind === "" || p.kind === "FM" || p.kind === "BECMG") bits.push("wind " + avWind(m).replace(/^Variable/, "variable").replace(/^Calm/, "calm"));
   if(p.f.visib != null || !p.kind || p.kind === "FM" || p.kind === "BECMG") if(m.visib != null) bits.push(visTxt(m.visib));
   if(p.f.wxString) bits.push(wxWords(p.f.wxString));
-  const sky = cloudsTxt(m.clouds, m.vertVis);
+  const sky = cloudsTxt(m.clouds, m.vertVis) || (!p.kind || p.kind === "FM" || p.kind === "BECMG" ? "sky clear" : "");
   if(sky && (p.f.clouds && p.f.clouds.length || p.f.vertVis != null || !p.kind || p.kind === "FM" || p.kind === "BECMG")) bits.push(sky.charAt(0).toLowerCase() + sky.slice(1));
   if(p.f.wshearHgt) bits.push("wind shear at " + p.f.wshearHgt + "00 ft");
   return bits.join(", ");
