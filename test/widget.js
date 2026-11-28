@@ -18,6 +18,8 @@ const D = Math.max(1, Math.min(4, +NJ_Q.get("d") || 2));
 const HERE = NJ_Q.get("here") === "1";
 /* app build 30: Android lays its own live clock over the top centre when this is on */
 const CLOCK = NJ_Q.get("clock") !== "0";
+/* app build 58: the bottom row shows the next hours (default) or the next days */
+const DAYS = NJ_Q.get("row") === "days";
 const T0 = Date.now(), MAX_WAIT = 28000;
 
 /* only the scene: no clock, cards, timeline, banners or rain on the glass */
@@ -151,6 +153,17 @@ function nextHours(n){
     const hr = +String(h.time).slice(11, 13);
     return { lab: hourLabel(hr), code: h.code, temp: h.temp, night: isNightAt(hr*60 + 30),
              pop: h.pop != null && h.pop >= 20 ? Math.round(h.pop/10)*10 + "%" : "" };
+  });
+}
+/* the next days from today, in the same shape as nextHours: label, icon,
+   the high where the hour's temperature goes and the low under it */
+function nextDays(n){
+  const p = zonedParts(new Date(), PLACE.tz);
+  const today = p.year + "-" + pad2(p.month) + "-" + pad2(p.day);
+  const NAMES = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+  return (WX.days || []).filter(d => String(d.date) >= today).slice(0, n).map(d => {
+    const dn = NAMES[new Date(String(d.date).slice(0, 10) + "T12:00:00Z").getUTCDay()];
+    return { lab: d.date === today ? "Today" : dn, code: d.code, temp: d.hi, lo: d.lo, night: false, pop: "" };
   });
 }
 function topAlert(){
@@ -373,7 +386,8 @@ function compose(){
       c.drawImage(spr, -R, -R, 2*R, 2*R); c.restore();
     } catch(e){}
     /* the next hours, evenly across, just above the footer */
-    const hrs = nextHours(Math.max(4, Math.min(7, Math.floor((Wd - 2*P)/50) + 1))), n = hrs.length;
+    const cols = Math.max(4, Math.min(7, Math.floor((Wd - 2*P)/50) + 1));
+    const hrs = DAYS ? nextDays(cols) : nextHours(cols), n = hrs.length;
     /* build 51: on a short widget the rows tighten so the chance of rain/snow
        clears the sun and moon line instead of running into it */
     const tight = fy - 92 < 100;
@@ -386,7 +400,8 @@ function compose(){
       txt(h.lab, gx, top + O[0], 14, 400, "center", .95);
       glyph(h.code, gx, top + O[1], 9.6, h.night);
       txt(h.temp + "°", gx, top + O[2], 16, 600, "center");
-      if(h.pop) { c.save(); c.font = "500 12.5px " + FT; c.fillStyle = "#9fd0ff"; c.textAlign = "center";
+      if(h.lo != null) txt(h.lo + "°", gx, top + O[3], 13, 500, "center", .72);
+      else if(h.pop) { c.save(); c.font = "500 12.5px " + FT; c.fillStyle = "#9fd0ff"; c.textAlign = "center";
                   c.shadowColor = "rgba(0,0,0,.5)"; c.shadowBlur = 3; c.fillText(h.pop, gx, top + O[3]); c.restore(); }
     });
   }
