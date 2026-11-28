@@ -1925,8 +1925,8 @@ function avLoad(force){
 }
 /* lowest broken/overcast layer (or vertical visibility), in feet */
 function avCeiling(m){
-  /* vertical visibility: treated as feet, or hundreds of feet if it's a small number (unit not confirmed yet) */
-  if(m.vertVis != null && isFinite(m.vertVis) && +m.vertVis > 0) return { ft: +m.vertVis < 100 ? +m.vertVis*100 : +m.vertVis, vv: true };
+  /* vertical visibility: METARs give hundreds of feet (VV002 -> 2), TAF periods give feet (VV002 -> 200) */
+  if(m.vertVis != null && isFinite(m.vertVis) && +m.vertVis > 0) return { ft: m.rawOb ? +m.vertVis*100 : +m.vertVis, vv: true };
   const c = (m.clouds || []).filter(x => /^(BKN|OVC|OVX)$/.test(x.cover) && x.base != null).sort((a, b) => a.base - b.base)[0];
   return c ? { ft: c.base, cover: c.cover } : null;
 }
@@ -1957,7 +1957,7 @@ function avAge(m){
 }
 function avRow(m, age){
   const cat = m.fltCat || "", col = AV_CAT[cat] || "#7d8aa3";
-  return '<div class="avRow"><span class="avCat" style="background:' + col + '">' + esc(cat || "—") + '</span>' +
+  return '<div class="avRow" data-id="' + esc(m.icaoId) + '"><span class="avCat" style="background:' + col + '">' + esc(cat || "—") + '</span>' +
     '<div class="avMain"><div class="avId"><span class="avNm"><b>' + esc(m.icaoId) + '</b> ' + esc(String(m.name || "").replace(/, [A-Z]{2}, [A-Z]{2}$/, "")) + '</span>' +
     '<span class="avDist">' + Math.round(avNM(m.km)) + ' NM</span></div>' +
     '<div class="avLine">' + esc(avLine(m)) + '</div>' + (age ? '<div class="avAge">' + esc(avAge(m)) + '</div>' : '') + '</div></div>';
@@ -1971,7 +1971,7 @@ function renderAviation(){
   else if(AV.list) body = '<div class="sub">No airport reports within about 100 km.</div>';
   else body = '<div class="sub">' + esc(AV.err || "Loading airport weather…") + '</div>';
   el.innerHTML = '<section class="pc avCard"><h3>Aviation <span class="tapHint">airports ›</span></h3>' + body + '</section>';
-  el.firstChild.onclick = () => avOpen();
+  el.firstChild.onclick = e => { const r = e.target.closest(".avRow[data-id]"); avOpen(); if(r) aptOpen(r.dataset.id); };
 }
 /* ---- Aviation page ---- */
 const avOpenNow = () => { const e = $("avFull"); return !!(e && !e.hidden); };
@@ -1979,6 +1979,7 @@ function avOpen(){
   let el = $("avFull");
   if(!el){
     el = document.createElement("div"); el.id = "avFull";
+    el.addEventListener("click", e => { const r = e.target.closest(".avRow[data-id]"); if(r) aptOpen(r.dataset.id); });
     el.innerHTML = '<div class="gfTop"><button class="rdB" id="avBack">‹ Aviation</button><span class="gfTitle avSub"></span></div><div class="avBody"></div>';
     document.body.appendChild(el);
     $("avBack").onclick = avClose;
@@ -1996,6 +1997,176 @@ function avDraw(){
   } else h = '<section class="pc"><div class="sub">' + esc(AV.list ? "No airport reports within about 100 km." : AV.err || "Loading airport weather…") + '</div></section>';
   h += '<div class="sub auFine">Reports from aviationweather.gov (NOAA). Distances in nautical miles. For planning only — not for navigation.</div>';
   el.querySelector(".avBody").innerHTML = h;
+}
+/* ---- Airport detail (Piloten step 4): decoded METAR, TAF timeline, raw text ----
+   Small fields often have no TAF (Willmar and Benson don't), so the nearest
+   TAF is shown instead and says which airport it's from. */
+const APT = { id: null, taf: null, tafErr: "" };
+const aptOpenNow = () => { const e = $("aptFull"); return !!(e && !e.hidden); };
+function aptClose(){ const e = $("aptFull"); if(e) e.hidden = true; }
+function aptOpen(id){
+  const m = (AV.list || []).find(x => x.icaoId === id); if(!m) return;
+  let el = $("aptFull");
+  if(!el){
+    el = document.createElement("div"); el.id = "aptFull";
+    el.innerHTML = '<div class="gfTop"><button class="rdB" id="aptBack">‹ Airports</button><span class="gfTitle aptSub"></span></div><div class="aptBody"></div>';
+    document.body.appendChild(el);
+    $("aptBack").onclick = aptClose;
+  }
+  el.hidden = false; el.scrollTop = 0;
+  APT.id = id; APT.taf = null; APT.tafErr = "";
+  aptDraw();
+  cachedJSON(RELAY + "/taf?lat=" + (+m.lat).toFixed(2) + "&lon=" + (+m.lon).toFixed(2), 10*60e3)
+    .then(j => {
+      if(APT.id !== id) return;
+      const list = (Array.isArray(j) ? j : []).filter(t => t && t.icaoId && Array.isArray(t.fcsts) && t.fcsts.length);
+      const own = list.find(t => t.icaoId === id);
+      const near = list.map(t => Object.assign({}, t, { km: kmBetween(m.lat, m.lon, t.lat, t.lon) })).sort((a, b) => a.km - b.km)[0];
+      APT.taf = own ? Object.assign({ km: 0 }, own) : near && near.km < 120 ? near : false;
+    })
+    .catch(() => { if(APT.id === id){ APT.taf = false; APT.tafErr = "The forecast couldn’t be loaded right now."; } })
+    .finally(() => { if(APT.id === id && aptOpenNow()) aptDraw(); });
+}
+/* METAR / TAF weather codes in words: "-SHRA BR" -> "light rain showers, mist" */
+const WX_DESC = { MI: "shallow", BC: "patches of", PR: "partial", DR: "low drifting", BL: "blowing", FZ: "freezing", TS: "thunderstorm with", SH: "showers of" };
+const WX_PH = { DZ: "drizzle", RA: "rain", SN: "snow", SG: "snow grains", IC: "ice crystals", PL: "ice pellets", GR: "hail", GS: "small hail",
+  UP: "unknown precipitation", BR: "mist", FG: "fog", FU: "smoke", VA: "volcanic ash", DU: "dust", SA: "sand", HZ: "haze", PY: "spray",
+  PO: "dust whirls", SQ: "squalls", FC: "funnel cloud", SS: "sandstorm", DS: "duststorm" };
+function wxWords(str){
+  return String(str || "").trim().split(/\s+/).filter(Boolean).map(tok => {
+    let t = tok, pre = "";
+    if(t[0] === "-"){ pre = "light "; t = t.slice(1); } else if(t[0] === "+"){ pre = "heavy "; t = t.slice(1); }
+    let vc = false; if(t.startsWith("VC")){ vc = true; t = t.slice(2); }
+    if(t === "FC" && pre === "heavy ") return "tornado or waterspout";
+    const parts = [];
+    while(t.length >= 2){ parts.push(t.slice(0, 2)); t = t.slice(2); }
+    let desc = "", ph = [];
+    parts.forEach(p => { if(WX_DESC[p]) desc = p; else if(WX_PH[p]) ph.push(WX_PH[p]); });
+    let w;
+    if(desc === "SH") w = (ph.join(" and ") || "") + " showers";
+    else if(desc === "TS") w = "thunderstorm" + (ph.length ? " with " + ph.join(" and ") : "");
+    else w = (desc ? WX_DESC[desc] + " " : "") + ph.join(" and ");
+    w = (pre + w).trim();
+    return (vc ? w + " nearby" : w) || tok;
+  }).join(", ");
+}
+/* FAA flight categories from ceiling (ft) and visibility (SM) */
+function catOf(ceilFt, visSM){
+  const c = ceilFt == null ? Infinity : ceilFt, v = visSM == null ? Infinity : visSM;
+  if(c < 500 || v < 1) return "LIFR";
+  if(c < 1000 || v < 3) return "IFR";
+  if(c <= 3000 || v <= 5) return "MVFR";
+  return "VFR";
+}
+const visNum = v => v == null || v === "" ? null : /\+$/.test(String(v)) ? parseFloat(v) + 0.01 : +v;
+const visTxt = v => v == null || v === "" ? "" : String(v).replace(/^(\d+)\+$/, "$1+") + " SM";
+function cloudsTxt(cl, vv){
+  if(vv) return "Sky obscured, vertical visibility " + Number(vv).toLocaleString("en-US") + " ft";
+  const W = { FEW: "Few", SCT: "Scattered", BKN: "Broken", OVC: "Overcast", OVX: "Obscured" };
+  const l = (cl || []).filter(c => c.base != null).map(c => (W[c.cover] || c.cover) + " " + Number(c.base).toLocaleString("en-US") + " ft" + (c.type ? " " + c.type : ""));
+  return l.join(", ");
+}
+const tLocal = ms => fmtMs(ms);
+function tDay(ms){
+  const p = zonedParts(new Date(ms), PLACE.tz), q = zonedParts(new Date(), PLACE.tz);
+  const same = p.year === q.year && p.month === q.month && p.day === q.day;
+  return (same ? "" : DOW[new Date(Date.UTC(p.year, p.month - 1, p.day)).getUTCDay()] + " ") + fmtTime(p.hour*60 + p.minute);
+}
+/* the TAF's periods with what the pilot will actually get: change groups
+   (TEMPO / PROB) fill missing items from the base period they sit in */
+function tafPeriods(t){
+  const base = [], temp = [];
+  t.fcsts.forEach(f => {
+    const g = f.fcstChange;
+    const p = { from: f.timeFrom*1000, to: f.timeTo*1000, kind: g || "", prob: f.probability, f };
+    if(g === "TEMPO" || g === "PROB") temp.push(p); else base.push(p);
+  });
+  base.sort((a, b) => a.from - b.from);
+  /* BECMG keeps the earlier groups' items it doesn't mention */
+  for(let i = 1; i < base.length; i++) if(base[i].kind === "BECMG"){
+    const a = base[i - 1].f, b = base[i].f;
+    base[i].f = Object.assign({}, a, Object.fromEntries(Object.entries(b).filter(([k, v]) => v != null && !(Array.isArray(v) && !v.length))));
+  }
+  const at = ms => base.filter(b => b.from <= ms).pop() || base[0];
+  const fill = p => {
+    const b = at(p.from).f, f = p.f;
+    const pick = k => f[k] != null && !(Array.isArray(f[k]) && !f[k].length) ? f[k] : b[k];
+    const clouds = f.clouds && f.clouds.length ? f.clouds : f.vertVis != null ? [] : b.clouds;
+    const vv = f.vertVis != null ? f.vertVis : f.clouds && f.clouds.length ? null : b.vertVis;
+    const m = { wdir: pick("wdir"), wspd: pick("wspd"), wgst: f.wspd != null ? f.wgst : b.wgst, visib: pick("visib"), clouds, vertVis: vv, wxString: f.wxString };
+    const cg = (clouds || []).filter(c => /^(BKN|OVC|OVX)$/.test(c.cover) && c.base != null).sort((x, y) => x.base - y.base)[0];
+    m.cat = catOf(vv ? +vv : cg ? cg.base : null, visNum(m.visib));
+    return Object.assign(p, { m });
+  };
+  return { base: base.map(fill), temp: temp.map(fill) };
+}
+function periodWords(p){
+  const m = p.m, bits = [];
+  if(p.f.wspd != null || p.kind === "" || p.kind === "FM" || p.kind === "BECMG") bits.push("wind " + avWind(m).replace(/^Variable/, "variable").replace(/^Calm/, "calm"));
+  if(p.f.visib != null || !p.kind || p.kind === "FM" || p.kind === "BECMG") if(m.visib != null) bits.push(visTxt(m.visib));
+  if(p.f.wxString) bits.push(wxWords(p.f.wxString));
+  const sky = cloudsTxt(m.clouds, m.vertVis);
+  if(sky && (p.f.clouds && p.f.clouds.length || p.f.vertVis != null || !p.kind || p.kind === "FM" || p.kind === "BECMG")) bits.push(sky.charAt(0).toLowerCase() + sky.slice(1));
+  if(p.f.wshearHgt) bits.push("wind shear at " + p.f.wshearHgt + "00 ft");
+  return bits.join(", ");
+}
+function tafBlock(t, m){
+  if(t === null) return '<div class="sub">Loading the forecast…</div>';
+  if(!t) return '<div class="sub">' + esc(APT.tafErr || "No forecast (TAF) within about 120 km of this airport.") + '</div>';
+  const P = tafPeriods(t), t0 = t.validTimeFrom*1000, t1 = t.validTimeTo*1000, span = Math.max(1, t1 - t0);
+  const pct = ms => Math.max(0, Math.min(100, (ms - t0)/span*100));
+  let h = '';
+  if(t.icaoId !== m.icaoId)
+    h += '<div class="aptNote">' + esc(m.icaoId) + ' has no forecast. Nearest: <b>' + esc(t.icaoId) + '</b> ' +
+      esc(String(t.name || "").replace(/, [A-Z]{2}, [A-Z]{2}$/, "")) + ', ' + Math.round(avNM(t.km)) + ' NM away.</div>';
+  /* the timeline: base periods on top, TEMPO / PROB underneath */
+  h += '<div class="tafTL"><div class="tafRow">' + P.base.map(p => '<i style="left:' + pct(p.from) + '%;width:' + (pct(p.to) - pct(p.from)) + '%;background:' + AV_CAT[p.m.cat] + '"></i>').join("") + '</div>';
+  if(P.temp.length) h += '<div class="tafRow tafTemp">' + P.temp.map(p => '<i style="left:' + pct(p.from) + '%;width:' + (pct(p.to) - pct(p.from)) + '%;background:' + AV_CAT[p.m.cat] + '"></i>').join("") + '</div>';
+  const now = Date.now();
+  if(now > t0 && now < t1) h += '<b class="tafNow" style="left:' + pct(now) + '%"></b>';
+  /* ticks every 6 hours on the local clock */
+  let ticks = '';
+  for(let ms = Math.ceil(t0/3600e3)*3600e3; ms <= t1; ms += 3600e3){
+    const hr = zonedParts(new Date(ms), PLACE.tz).hour;
+    if(hr % 6) continue;
+    const lab = CONFIG.clock24 ? String(hr).padStart(2, "0") : (hr % 12 || 12) + (hr < 12 ? "a" : "p");
+    ticks += '<span style="left:' + pct(ms) + '%">' + (hr === 0 ? DOW[new Date(ms + 12*3600e3).getUTCDay()] : lab) + '</span>';
+  }
+  h += '<div class="tafTicks">' + ticks + '</div></div>';
+  /* plain words */
+  const rows = P.base.map(p => ({ p, at: p.from, lab: p === P.base[0] ? "From " + tDay(p.from) : (p.kind === "BECMG" ? "Becoming, " + tDay(p.from) + "–" + tLocal((p.f.timeBec || p.f.timeTo)*1000) : "From " + tDay(p.from)) }))
+    .concat(P.temp.map(p => ({ p, at: p.from + 1, lab: (p.kind === "PROB" || p.prob ? (p.prob || 30) + "% chance" : "At times") + ", " + tDay(p.from) + "–" + tLocal(p.to) })))
+    .sort((a, b) => a.at - b.at);
+  h += '<div class="tafList">' + rows.map(r => '<div class="tafP' + (r.p.kind === "TEMPO" || r.p.kind === "PROB" ? ' tafPt' : '') + '"><span class="avCat" style="background:' + AV_CAT[r.p.m.cat] + '">' + r.p.m.cat + '</span><div><b>' + esc(r.lab) + '</b><br>' + esc(periodWords(r.p)) + '</div></div>').join("") + '</div>';
+  h += '<div class="aptRaw">' + esc(t.rawTAF || "") + '</div>';
+  h += '<div class="sub auFine">Issued ' + esc(tDay(Date.parse(t.issueTime) || t0)) + '. Times are ' + esc(placeName(PLACE)) + ' local time.</div>';
+  return h;
+}
+function aptDraw(){
+  const el = $("aptFull"); if(!el) return;
+  const m = (AV.list || []).find(x => x.icaoId === APT.id); if(!m){ aptClose(); return; }
+  el.querySelector(".aptSub").textContent = Math.round(avNM(m.km)) + " NM from " + placeName(PLACE);
+  const cat = m.fltCat || "", F = CONFIG.units === "imperial";
+  const cF = c => Math.round(c*9/5 + 32);
+  const tmp = c => c == null ? "" : F ? cF(c) + "°F (" + Math.round(c) + "°C)" : Math.round(c) + "°C";
+  const rows = [
+    ["Wind", avWind(m) + (m.wdir != null && m.wdir !== "VRB" && +m.wspd ? " — from the " + compassOf(+m.wdir) : "")],
+    ["Visibility", visTxt(m.visib)],
+    ["Weather", wxWords(m.wxString)],
+    ["Sky", cloudsTxt(m.clouds, m.vertVis != null ? +m.vertVis*100 : null) || (m.cover === "CLR" || m.cover === "SKC" ? "Clear below 12,000 ft" : m.cover === "CAVOK" ? "Ceiling and visibility OK" : "")],
+    ["Temperature", tmp(m.temp)],
+    ["Dew point", tmp(m.dewp) + (m.temp != null && m.dewp != null ? " · spread " + Math.round(F ? (m.temp - m.dewp)*9/5 : m.temp - m.dewp) + "°" : "")],
+    ["Altimeter", m.altim ? (m.altim*0.0295300).toFixed(2) + " inHg · " + Math.round(m.altim) + " hPa" : ""],
+    ["Elevation", m.elev != null ? Math.round(m.elev*3.28084).toLocaleString("en-US") + " ft" : ""]
+  ].filter(r => r[1]);
+  let h = '<section class="pc aptHead"><span class="avCat aptCat" style="background:' + (AV_CAT[cat] || "#7d8aa3") + '">' + esc(cat || "—") + '</span>' +
+    '<div><div class="aptId">' + esc(m.icaoId) + '</div><div class="aptName">' + esc(String(m.name || "").replace(/, [A-Z]{2}, [A-Z]{2}$/, "")) + '</div></div></section>';
+  h += '<section class="pc"><h3>Now <span class="tapHint">' + esc(avAge(m)) + '</span></h3><div class="aptKV">' +
+    rows.map(r => '<div><span>' + r[0] + '</span><b>' + esc(r[1]) + '</b></div>').join("") + '</div>' +
+    '<div class="aptRaw">' + esc(m.rawOb || "") + '</div></section>';
+  h += '<section class="pc"><h3>Forecast (TAF)</h3>' + tafBlock(APT.taf, m) + '</section>';
+  h += '<div class="sub auFine">From aviationweather.gov (NOAA). For planning only — not for navigation.</div>';
+  el.querySelector(".aptBody").innerHTML = h;
 }
 /* aurora: a green note at the top of the cards when it is active or expected
    tonight - the same note the desktop shows under the moon */
@@ -2099,6 +2270,7 @@ top.addEventListener("click", e => {
 
 /* Android back button: close what is open, then scroll the sheet home */
 window.njordBack = function(){
+  if(aptOpenNow()){ aptClose(); return true; }
   if(avOpenNow()){ avClose(); return true; }
   if(auOpenNow()){ auClose(); return true; }
   if(gfOpenNow()){ const el = $("gfFull"); if(el.querySelector(".gfDrawer.open")) el.gfDrawer(false); else gfClose(); return true; }

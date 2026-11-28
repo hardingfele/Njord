@@ -630,3 +630,38 @@ html.njWeb #avFull { padding-top: 6px; }
 #avFull .gfTitle { white-space: normal; letter-spacing: .06em; text-transform: none; font-size: 12px; line-height: 1.3; }
 #avFull .pc { margin: 0 0 12px; }
 #avFull .gfTop .rdB { white-space: nowrap; flex: 0 0 auto; }
+
+/* ---- build 58: airport detail ---- */
+.avRow[data-id] { cursor: pointer; }
+#aptFull { position: fixed; inset: 0; z-index: 8600; background: linear-gradient(#152036, #0b111d 70%); color: #e8eef8; overflow-y: auto;
+  font: 400 14px/1.4 Figtree, system-ui, sans-serif; padding: calc(6px + env(safe-area-inset-top)) 12px calc(16px + env(safe-area-inset-bottom)); }
+html.njWeb #aptFull { padding-top: 6px; }
+#aptFull[hidden] { display: none; }
+#aptFull .gfTop { padding: 0 0 8px; }
+#aptFull .gfTop .rdB { white-space: nowrap; flex: 0 0 auto; }
+#aptFull .gfTitle { white-space: normal; letter-spacing: .06em; text-transform: none; font-size: 12px; line-height: 1.3; }
+#aptFull .pc { margin: 0 0 12px; }
+.aptHead { display: flex; gap: 12px; align-items: center; }
+.aptCat { flex: 0 0 auto; font-size: 13px; padding: 5px 10px; }
+.aptId { font-size: 22px; font-weight: 700; letter-spacing: .04em; color: #fff; }
+.aptName { font-size: 13.5px; color: rgba(214,226,244,.8); }
+.aptKV > div { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; border-top: 1px solid rgba(160,190,235,.08); }
+.aptKV > div:first-child { border-top: 0; }
+.aptKV span { color: rgba(180,198,226,.7); font-size: 13px; flex: 0 0 auto; }
+.aptKV b { font-weight: 500; text-align: right; font-size: 13.5px; }
+.aptRaw { margin-top: 10px; padding: 8px 10px; border-radius: 8px; background: rgba(0,0,0,.28); font: 12px/1.45 ui-monospace, "Roboto Mono", Menlo, monospace; color: rgba(214,226,244,.85); word-break: break-word; }
+.aptNote { font-size: 13px; color: rgba(214,226,244,.85); margin-bottom: 10px; padding: 7px 10px; border-radius: 8px; background: rgba(74,140,255,.12); }
+.tafTL { position: relative; margin: 4px 0 6px; }
+.tafRow { position: relative; height: 16px; border-radius: 5px; background: rgba(255,255,255,.06); overflow: hidden; }
+.tafRow i { position: absolute; top: 0; bottom: 0; border-right: 1px solid rgba(11,17,29,.6); }
+.tafTemp { height: 9px; margin-top: 3px; background: transparent; }
+.tafTemp i { border-radius: 3px; opacity: .85; background-image: repeating-linear-gradient(45deg, rgba(0,0,0,.25) 0 3px, transparent 3px 6px) !important; }
+.tafNow { position: absolute; top: -3px; height: 24px; width: 2px; margin-left: -1px; background: #fff; border-radius: 1px; box-shadow: 0 0 3px rgba(0,0,0,.6); }
+.tafTicks { position: relative; height: 16px; margin-top: 3px; font-size: 11px; color: rgba(180,198,226,.7); }
+.tafTicks span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+.tafList { margin-top: 6px; }
+.tafP { display: flex; gap: 10px; align-items: flex-start; padding: 7px 0; border-top: 1px solid rgba(160,190,235,.08); font-size: 13px; color: rgba(214,226,244,.85); }
+.tafP b { color: #fff; font-weight: 600; }
+.tafP .avCat { margin-top: 2px; }
+.tafPt { padding-left: 14px; }
+.tafPt .avCat { background-image: repeating-linear-gradient(45deg, rgba(0,0,0,.22) 0 3px, transparent 3px 6px); }
