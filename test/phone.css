@@ -665,3 +665,18 @@ html.njWeb #aptFull { padding-top: 6px; }
 .tafP .avCat { margin-top: 2px; }
 .tafPt { padding-left: 14px; }
 .tafPt .avCat { background-image: repeating-linear-gradient(45deg, rgba(0,0,0,.22) 0 3px, transparent 3px 6px); }
+
+/* ---- build 58: runways ---- */
+.rwSvg { display: block; width: 100%; max-width: 300px; margin: 0 auto 6px; }
+.rwSvg text { fill: #fff; font: 700 11px Figtree, system-ui, sans-serif; text-anchor: middle; paint-order: stroke; stroke: rgba(11,17,29,.85); stroke-width: 3px; }
+.rwSvg .rwN { fill: rgba(180,198,226,.75); font-size: 10px; font-weight: 600; }
+.rwWind line { stroke: #7fd3ff; stroke-width: 2.5; stroke-linecap: round; }
+.rwWind path { fill: #7fd3ff; }
+.rwRw { padding: 7px 0; border-top: 1px solid rgba(160,190,235,.08); }
+.rwRw:first-child { border-top: 0; }
+.rwInfo { font-size: 13px; font-weight: 600; color: #fff; margin-bottom: 3px; }
+.rwInfo small { font-weight: 400; color: rgba(180,198,226,.65); }
+.rwEnd { display: flex; gap: 10px; font-size: 13px; color: rgba(214,226,244,.85); padding: 2px 0; }
+.rwEnd b { flex: 0 0 34px; color: #fff; font-weight: 700; }
+.rwBest em { font-style: normal; color: #3fbf5f; font-weight: 700; }
+.rwTail span { color: rgba(255,190,150,.9); }

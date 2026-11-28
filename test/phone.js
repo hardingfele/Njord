@@ -2014,8 +2014,9 @@ function aptOpen(id){
     $("aptBack").onclick = aptClose;
   }
   el.hidden = false; el.scrollTop = 0;
-  APT.id = id; APT.taf = null; APT.tafErr = "";
+  APT.id = id; APT.taf = null; APT.tafErr = ""; APT.rwy = null;
   aptDraw();
+  rwyLoad().then(d => { if(APT.id !== id) return; APT.rwy = (d && d[id]) || []; if(aptOpenNow()) aptDraw(); });
   cachedJSON(RELAY + "/taf?lat=" + (+m.lat).toFixed(2) + "&lon=" + (+m.lon).toFixed(2), 10*60e3)
     .then(j => {
       if(APT.id !== id) return;
@@ -2150,6 +2151,116 @@ function tafBlock(t, m){
   h += '<div class="sub auFine">Issued ' + esc(tDay(Date.parse(t.issueTime) || t0)) + '. Times are ' + esc(placeName(PLACE)) + ' local time.</div>';
   return h;
 }
+/* ---- Runways (Piloten step 5): diagram + head / crosswind per runway end ----
+   Runways from OurAirports (public domain), built into runways.json at compile
+   time by tools/build_runways.py. Row: [le, he, len, wid, surf, lit, lat1, lon1,
+   lat2, lon2, hdgT, leDisp, heDisp]. METAR wind is true, so it's compared with
+   true runway headings; with no heading or ends, the runway number is used. */
+let RWY = null;
+function rwyLoad(){
+  if(!RWY) RWY = fetch("runways.json").then(r => r.ok ? r.json() : Promise.reject(r.status)).catch(() => { RWY = null; return {}; });
+  return RWY;
+}
+const SURF = { A: "asphalt", C: "concrete", P: "paved", T: "turf", G: "gravel", D: "dirt", W: "water", S: "snow / ice", "?": "" };
+const SURF_COL = { A: "#7b8496", C: "#9aa3b2", P: "#8a93a3", T: "#4f8f4a", G: "#a08a63", D: "#8d6e4f", W: "#3f7fc7", S: "#cfd8e6", "?": "#7b8496" };
+function bearing(la1, lo1, la2, lo2){
+  const f1 = la1*Math.PI/180, f2 = la2*Math.PI/180, dl = (lo2 - lo1)*Math.PI/180;
+  const y = Math.sin(dl)*Math.cos(f2), x = Math.cos(f1)*Math.sin(f2) - Math.sin(f1)*Math.cos(f2)*Math.cos(dl);
+  return (Math.atan2(y, x)*180/Math.PI + 360) % 360;
+}
+/* each runway with its two ends' true headings; approx when only the number is known */
+function rwyList(rows){
+  return (rows || []).map(r => {
+    const [le, he, len, wid, surf, lit, a1, o1, a2, o2, hdg, d1, d2] = r;
+    const ends = a1 != null && a2 != null && o1 != null && o2 != null;
+    let h = hdg != null ? hdg : ends ? bearing(a1, o1, a2, o2) : null, approx = false;
+    if(h == null){ const n = parseInt(le, 10); if(n >= 1 && n <= 36){ h = n*10; approx = true; } }
+    return { le, he, len, wid, surf, lit, a1, o1, a2, o2, d1, d2, ends, h, approx };
+  });
+}
+/* wind components for a runway end facing heading h (true): + head, + cross from the right */
+function comps(wdir, spd, h){
+  const a = (wdir - h)*Math.PI/180;
+  return { head: spd*Math.cos(a), cross: spd*Math.sin(a) };
+}
+function windFor(end, m){
+  const spd = +m.wspd || 0, g = +m.wgst || 0;
+  if(!spd) return { txt: "Calm", score: 0 };
+  if(m.wdir === "VRB" || m.wdir == null)
+    return { txt: "Variable — crosswind up to " + Math.max(spd, g) + " kt", score: 0 };
+  const c = comps(+m.wdir, spd, end.h), cg = g ? comps(+m.wdir, g, end.h) : null;
+  const hw = Math.round(c.head), xw = Math.round(Math.abs(c.cross));
+  const bits = [hw >= 0 ? (hw ? "headwind " + hw + " kt" : "no headwind") : "tailwind " + (-hw) + " kt"];
+  bits.push(xw ? "crosswind " + xw + " kt from the " + (c.cross > 0 ? "right" : "left") : "no crosswind");
+  if(cg && Math.round(Math.abs(cg.cross)) > xw) bits.push("gusts " + Math.round(Math.abs(cg.cross)) + " kt across");
+  return { txt: bits.join(", "), score: c.head - Math.abs(c.cross)*0.25, tail: hw < 0 };
+}
+function rwyDiagram(list, m){
+  const L = list.filter(r => r.h != null);
+  if(!L.length) return "";
+  /* local flat projection around the airport, metres */
+  const lat0 = +m.lat, lon0 = +m.lon, kx = 111320*Math.cos(lat0*Math.PI/180), ky = 110540;
+  const segs = L.map(r => {
+    let x1, y1, x2, y2;
+    if(r.ends){ x1 = (r.o1 - lon0)*kx; y1 = (r.a1 - lat0)*ky; x2 = (r.o2 - lon0)*kx; y2 = (r.a2 - lat0)*ky; }
+    else { const half = (r.len || 3000)*0.3048/2, t = r.h*Math.PI/180; x1 = -Math.sin(t)*half; y1 = -Math.cos(t)*half; x2 = -x1; y2 = -y1; }
+    return Object.assign({ x1, y1, x2, y2 }, r);
+  });
+  const xs = segs.flatMap(s => [s.x1, s.x2]), ys = segs.flatMap(s => [s.y1, s.y2]);
+  const cx = (Math.min(...xs) + Math.max(...xs))/2, cy = (Math.min(...ys) + Math.max(...ys))/2;
+  const ext = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys), 600);
+  const S = 260, pad = 38, k = (S - 2*pad)/ext;
+  const P = (x, y) => [S/2 + (x - cx)*k, S/2 - (y - cy)*k];
+  let g = '';
+  segs.forEach(s => {
+    const [X1, Y1] = P(s.x1, s.y1), [X2, Y2] = P(s.x2, s.y2);
+    const w = Math.max(5, Math.min(14, (s.wid || 75)*0.3048*k*1.6));
+    g += '<line x1="' + X1.toFixed(1) + '" y1="' + Y1.toFixed(1) + '" x2="' + X2.toFixed(1) + '" y2="' + Y2.toFixed(1) +
+      '" stroke="' + SURF_COL[s.surf] + '" stroke-width="' + w.toFixed(1) + '" stroke-linecap="butt"/>';
+    if(s.surf !== "T" && s.surf !== "W" && s.surf !== "D" && s.surf !== "G")
+      g += '<line x1="' + X1.toFixed(1) + '" y1="' + Y1.toFixed(1) + '" x2="' + X2.toFixed(1) + '" y2="' + Y2.toFixed(1) +
+        '" stroke="rgba(255,255,255,.55)" stroke-width="0.8" stroke-dasharray="5 4"/>';
+    /* end labels just beyond each end */
+    const dx = X2 - X1, dy = Y2 - Y1, d = Math.hypot(dx, dy) || 1, ux = dx/d, uy = dy/d;
+    g += '<text x="' + (X1 - ux*13).toFixed(1) + '" y="' + (Y1 - uy*13 + 4).toFixed(1) + '">' + esc(s.le) + '</text>';
+    if(s.he) g += '<text x="' + (X2 + ux*13).toFixed(1) + '" y="' + (Y2 + uy*13 + 4).toFixed(1) + '">' + esc(s.he) + '</text>';
+  });
+  /* wind: an arrow coming in from where the wind blows from */
+  let wa = '';
+  if(+m.wspd && m.wdir != null && m.wdir !== "VRB"){
+    const t = +m.wdir*Math.PI/180, R0 = S/2 - 6, R1 = S/2 - 46;
+    const ax = S/2 + Math.sin(t)*R0, ay = S/2 - Math.cos(t)*R0, bx = S/2 + Math.sin(t)*R1, by = S/2 - Math.cos(t)*R1;
+    const hx = -Math.sin(t), hy = Math.cos(t), nx = Math.cos(t), ny = Math.sin(t);
+    wa = '<g class="rwWind"><line x1="' + ax.toFixed(1) + '" y1="' + ay.toFixed(1) + '" x2="' + bx.toFixed(1) + '" y2="' + by.toFixed(1) + '"/>' +
+      '<path d="M' + (bx + hx*2).toFixed(1) + ' ' + (by + hy*2).toFixed(1) + ' L' + (bx - hx*9 + nx*6).toFixed(1) + ' ' + (by - hy*9 + ny*6).toFixed(1) +
+      ' L' + (bx - hx*9 - nx*6).toFixed(1) + ' ' + (by - hy*9 - ny*6).toFixed(1) + 'Z"/></g>';
+  }
+  return '<svg class="rwSvg" viewBox="0 0 ' + S + ' ' + S + '" role="img" aria-label="Runway diagram">' +
+    '<text class="rwN" x="' + (S - 14) + '" y="18">N↑</text>' + g + wa + '</svg>';
+}
+function rwyBlock(rows, m){
+  if(rows === null) return '<div class="sub">Loading runways…</div>';
+  const list = rwyList(rows);
+  if(!list.length) return '<div class="sub">No runway data for this airport.</div>';
+  /* every runway end with its wind; the best one marked */
+  const ends = [];
+  list.forEach(r => {
+    if(r.h == null) return;
+    ends.push({ name: r.le, h: r.h, r });
+    if(r.he) ends.push({ name: r.he, h: (r.h + 180) % 360, r });
+  });
+  ends.forEach(e => e.w = windFor(e, m));
+  const windy = +m.wspd && m.wdir != null && m.wdir !== "VRB";
+  const best = windy ? ends.reduce((a, b) => b.w.score > a.w.score ? b : a, ends[0]) : null;
+  let h = rwyDiagram(list, m);
+  h += '<div class="rwList">' + list.map(r => {
+    const info = [r.le + (r.he ? "/" + r.he : ""), r.len ? r.len.toLocaleString("en-US") + (r.wid ? " × " + r.wid : "") + " ft" : "", SURF[r.surf], r.lit ? "lighted" : ""].filter(Boolean);
+    const rows2 = ends.filter(e => e.r === r).map(e => '<div class="rwEnd' + (e === best ? ' rwBest' : '') + (e.w.tail ? ' rwTail' : '') + '"><b>' + esc(e.name) + '</b><span>' + esc(e.w.txt) + (e === best ? ' · <em>favoured</em>' : '') + '</span></div>').join("");
+    return '<div class="rwRw"><div class="rwInfo">' + esc(info.join(" · ")) + (r.approx ? ' <small>(heading from the runway number)</small>' : '') + '</div>' + rows2 + '</div>';
+  }).join("") + '</div>';
+  h += '<div class="sub auFine">Wind from the latest METAR (true), against true runway headings. Runways: OurAirports. Not for navigation.</div>';
+  return h;
+}
 function aptDraw(){
   const el = $("aptFull"); if(!el) return;
   const m = (AV.list || []).find(x => x.icaoId === APT.id); if(!m){ aptClose(); return; }
@@ -2172,6 +2283,7 @@ function aptDraw(){
   h += '<section class="pc"><h3>Now <span class="tapHint">' + esc(avAge(m)) + '</span></h3><div class="aptKV">' +
     rows.map(r => '<div><span>' + r[0] + '</span><b>' + esc(r[1]) + '</b></div>').join("") + '</div>' +
     '<div class="aptRaw">' + esc(m.rawOb || "") + '</div></section>';
+  h += '<section class="pc"><h3>Runways <span class="tapHint">' + esc(avWind(m)) + '</span></h3>' + rwyBlock(APT.rwy, m) + '</section>';
   h += '<section class="pc"><h3>Forecast (TAF)</h3>' + tafBlock(APT.taf, m) + '</section>';
   h += '<div class="sub auFine">From aviationweather.gov (NOAA). For planning only — not for navigation.</div>';
   el.querySelector(".aptBody").innerHTML = h;
