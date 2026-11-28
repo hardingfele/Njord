@@ -2210,7 +2210,7 @@ function rwyDiagram(list, m){
   const cx = (Math.min(...xs) + Math.max(...xs))/2, cy = (Math.min(...ys) + Math.max(...ys))/2;
   /* fit the runways inside a circle, leaving a clear ring for the wind arrow and its label */
   const rmax = Math.max(300, ...segs.flatMap(s => [Math.hypot(s.x1 - cx, s.y1 - cy), Math.hypot(s.x2 - cx, s.y2 - cy)]));
-  const S = 300, k = (S/2 - 74)/rmax;
+  const S = 300, k = (S/2 - 86)/rmax;   // runways + their 13 px labels stay inside r = 77
   const P = (x, y) => [S/2 + (x - cx)*k, S/2 - (y - cy)*k];
   let g = '';
   segs.forEach(s => {
@@ -2229,7 +2229,7 @@ function rwyDiagram(list, m){
   /* wind: an arrow coming in from where the wind blows from */
   let wa = '';
   if(+m.wspd && m.wdir != null && m.wdir !== "VRB"){
-    const t = +m.wdir*Math.PI/180, R0 = S/2 - 4, R1 = S/2 - 62;
+    const t = +m.wdir*Math.PI/180, R0 = S/2 - 2, R1 = S/2 - 60;   // arrow from r = 148 in to r = 90
     const ax = S/2 + Math.sin(t)*R0, ay = S/2 - Math.cos(t)*R0, bx = S/2 + Math.sin(t)*R1, by = S/2 - Math.cos(t)*R1;
     const hx = -Math.sin(t), hy = Math.cos(t), nx = Math.cos(t), ny = Math.sin(t);
     wa = '<g class="rwWind"><line x1="' + ax.toFixed(1) + '" y1="' + ay.toFixed(1) + '" x2="' + bx.toFixed(1) + '" y2="' + by.toFixed(1) + '"/>' +
