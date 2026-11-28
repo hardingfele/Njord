@@ -1958,7 +1958,7 @@ function avAge(m){
 function avRow(m, age){
   const cat = m.fltCat || "", col = AV_CAT[cat] || "#7d8aa3";
   return '<div class="avRow"><span class="avCat" style="background:' + col + '">' + esc(cat || "—") + '</span>' +
-    '<div class="avMain"><div class="avId"><b>' + esc(m.icaoId) + '</b> ' + esc(String(m.name || "").replace(/, [A-Z]{2}, [A-Z]{2}$/, "")) +
+    '<div class="avMain"><div class="avId"><span class="avNm"><b>' + esc(m.icaoId) + '</b> ' + esc(String(m.name || "").replace(/, [A-Z]{2}, [A-Z]{2}$/, "")) + '</span>' +
     '<span class="avDist">' + Math.round(avNM(m.km)) + ' NM</span></div>' +
     '<div class="avLine">' + esc(avLine(m)) + '</div>' + (age ? '<div class="avAge">' + esc(avAge(m)) + '</div>' : '') + '</div></div>';
 }
