@@ -1949,7 +1949,7 @@ function avSky(m){
   if(top) return (top.cover === "FEW" ? "Few " : "Scattered ") + Number(top.base).toLocaleString("en-US") + " ft";
   return m.cover === "CLR" || m.cover === "SKC" || m.cover === "CAVOK" ? "Clear" : "";
 }
-function avLine(m){ return [avWind(m), avVis(m), avSky(m), m.wxString || ""].filter(Boolean).join(" · "); }
+function avLine(m){ return [avWind(m), avVis(m), avSky(m), m.wxString ? wxWords(m.wxString) : ""].filter(Boolean).join(" · "); }
 function avAge(m){
   const t = (m.obsTime || 0)*1000; if(!t) return "";
   const min = Math.round((Date.now() - t)/60e3);
