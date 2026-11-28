@@ -2235,13 +2235,21 @@ function rwyDiagram(list, m){
     wa = '<g class="rwWind"><line x1="' + ax.toFixed(1) + '" y1="' + ay.toFixed(1) + '" x2="' + bx.toFixed(1) + '" y2="' + by.toFixed(1) + '"/>' +
       '<path d="M' + (bx + hx*2).toFixed(1) + ' ' + (by + hy*2).toFixed(1) + ' L' + (bx - hx*9 + nx*6).toFixed(1) + ' ' + (by - hy*9 + ny*6).toFixed(1) +
       ' L' + (bx - hx*9 - nx*6).toFixed(1) + ' ' + (by - hy*9 - ny*6).toFixed(1) + 'Z"/>';
-    /* "270° 5 kt" above the shaft, "from the W" below, along the arrow and never upside down */
-    let ang = Math.atan2(by - ay, bx - ax)*180/Math.PI;
-    if(ang > 90) ang -= 180; else if(ang < -90) ang += 180;
+    /* level text: "270° 5 kt" on the upper side of the arrow, "from the W" on the lower
+       side (left and right of it when the arrow is vertical) */
     const mx = (ax + bx)/2, my = (ay + by)/2;
-    wa += '<g transform="translate(' + mx.toFixed(1) + ' ' + my.toFixed(1) + ') rotate(' + ang.toFixed(1) + ')">' +
-      '<text class="rwWt" x="0" y="-7">' + esc(avWind(m)) + '</text>' +
-      '<text class="rwWt rwWf" x="0" y="15">from the ' + compassOf(+m.wdir) + '</text></g></g>';
+    let px = -(by - ay), py = bx - ax; const pl = Math.hypot(px, py) || 1; px /= pl; py /= pl;
+    if(py > 0 || (py === 0 && px > 0)){ px = -px; py = -py; }          // (px, py) points up / left
+    const lab = (x, y, nx, cls, t) => {
+      const anchor = Math.abs(nx) < 0.45 ? "middle" : nx < 0 ? "end" : "start";
+      /* keep it inside the picture (about 6.6 px per character at this size) */
+      const w = t.length*6.6, left = anchor === "end" ? x - w : anchor === "middle" ? x - w/2 : x;
+      x += Math.max(0, 3 - left) - Math.max(0, left + w - (S - 3));
+      y = Math.max(12, Math.min(S - 4, y + 4));
+      return '<text class="' + cls + '" style="text-anchor:' + anchor + '" x="' + x.toFixed(1) + '" y="' + y.toFixed(1) + '">' + esc(t) + '</text>';
+    };
+    wa += lab(mx + px*12, my + py*12, px, "rwWt", avWind(m)) +
+          lab(mx - px*12, my - py*12, -px, "rwWt rwWf", "from the " + compassOf(+m.wdir)) + '</g>';
   }
   return '<svg class="rwSvg" viewBox="0 0 ' + S + ' ' + S + '" role="img" aria-label="Runway diagram">' +
     '<text class="rwN" x="' + (S - 14) + '" y="18">N↑</text>' + g + wa + '</svg>';
