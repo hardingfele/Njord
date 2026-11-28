@@ -2208,8 +2208,9 @@ function rwyDiagram(list, m){
   });
   const xs = segs.flatMap(s => [s.x1, s.x2]), ys = segs.flatMap(s => [s.y1, s.y2]);
   const cx = (Math.min(...xs) + Math.max(...xs))/2, cy = (Math.min(...ys) + Math.max(...ys))/2;
-  const ext = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys), 600);
-  const S = 300, pad = 66, k = (S - 2*pad)/ext;
+  /* fit the runways inside a circle, leaving a clear ring for the wind arrow and its label */
+  const rmax = Math.max(300, ...segs.flatMap(s => [Math.hypot(s.x1 - cx, s.y1 - cy), Math.hypot(s.x2 - cx, s.y2 - cy)]));
+  const S = 300, k = (S/2 - 74)/rmax;
   const P = (x, y) => [S/2 + (x - cx)*k, S/2 - (y - cy)*k];
   let g = '';
   segs.forEach(s => {
